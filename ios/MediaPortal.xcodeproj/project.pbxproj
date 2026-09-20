@@ -13,6 +13,7 @@
 		0C5E1B81EA8206770FC6668D /* Zip-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = CB0451BFC510AA92C2115B2A /* Zip-LICENSE.txt */; };
 		14A8EB6A8A449CD6892E0B08 /* alice.epub in Resources */ = {isa = PBXBuildFile; fileRef = CD06FB4BBD8AC4FFAF1413D0 /* alice.epub */; };
 		186B77F45187B742E2963F92 /* TDLib.txt in Resources */ = {isa = PBXBuildFile; fileRef = 62EE249E7A949BD3159FA86F /* TDLib.txt */; };
+		1DA27BDF9D9F5D15DDAC6C29 /* PositionSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FAD497333E06E584FBE9B39 /* PositionSyncTests.swift */; };
 		22682BB7759F4BDC21427C05 /* NotesExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F83A0C3A530ADFC97764034 /* NotesExchange.swift */; };
 		29FBDDA9A04FDCA43AC39009 /* MediaPortalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C320CDD8F0A78B8C6EAC26 /* MediaPortalApp.swift */; };
 		2B2C1145E79AC1B4F037A973 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 69109F4CA1AD44FAAC9DE5B3 /* Assets.xcassets */; };
@@ -46,7 +47,9 @@
 		A4BDEFD178555A820715E6B9 /* OfflineDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B273C586C172B7E0D5099F62 /* OfflineDictionary.swift */; };
 		A7FA0EB2A36D534456A55DC3 /* DictionaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67E1C069799E9CB45A70508 /* DictionaryTests.swift */; };
 		A8EEC5A19822A5599FBC9129 /* DifferenceKit-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = ECF68075F4BF696D46B1209C /* DifferenceKit-LICENSE.txt */; };
+		AA0861C622107CB3CAC3F1CB /* PositionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66EF2D4C03A21C1ADAEE7602 /* PositionSync.swift */; };
 		B21A48D3E75BA4FF27380185 /* LibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */; };
+		B7DB242DA1AB8C4809518AA7 /* SeriesMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8759C04C26A75CC535B09679 /* SeriesMetadataTests.swift */; };
 		BBE24CC51FD6BD3B410002ED /* ReaderTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F78F97E40AC23598BBA508 /* ReaderTools.swift */; };
 		C0A6F4CD11D3C28D893989B0 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6714931500F7EEDAA4CF703C /* Discovery.swift */; };
 		C66DF317D708E54744A04A59 /* LibrarySortTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */; };
@@ -109,16 +112,19 @@
 		57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySortTests.swift; sourceTree = "<group>"; };
 		5F83A0C3A530ADFC97764034 /* NotesExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesExchange.swift; sourceTree = "<group>"; };
 		62EE249E7A949BD3159FA86F /* TDLib.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = TDLib.txt; sourceTree = "<group>"; };
+		66EF2D4C03A21C1ADAEE7602 /* PositionSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PositionSync.swift; sourceTree = "<group>"; };
 		6714931500F7EEDAA4CF703C /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
 		69109F4CA1AD44FAAC9DE5B3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		761DC45E4C90A7706EA80DB6 /* TelegramIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramIdentity.swift; sourceTree = "<group>"; };
 		7A744FBDE9CFFC0858114D29 /* MediaPortalTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MediaPortalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DFF22C2BE44CF3C3AB4CC44 /* ZIPFoundation-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "ZIPFoundation-LICENSE.txt"; sourceTree = "<group>"; };
+		8759C04C26A75CC535B09679 /* SeriesMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesMetadataTests.swift; sourceTree = "<group>"; };
 		905BB87D25B2574FA5C630F3 /* chaptered.m4b */ = {isa = PBXFileReference; path = chaptered.m4b; sourceTree = "<group>"; };
 		91640C7451F72BC9904CF2B8 /* SwiftSoup-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SwiftSoup-LICENSE.txt"; sourceTree = "<group>"; };
 		9548678D7E8A1408523A7ED9 /* TelegramAudioResource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramAudioResource.swift; sourceTree = "<group>"; };
 		97346D65B15BCA7EE0148072 /* KoSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KoSync.swift; sourceTree = "<group>"; };
 		9D3ADCC35432199D67374969 /* comic.cbz */ = {isa = PBXFileReference; path = comic.cbz; sourceTree = "<group>"; };
+		9FAD497333E06E584FBE9B39 /* PositionSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PositionSyncTests.swift; sourceTree = "<group>"; };
 		A73C2F173CA6C7CC2ED5FC1F /* PortalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalUITests.swift; sourceTree = "<group>"; };
 		AA8B434B66CD0C5371752AC2 /* CryptoSwift-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CryptoSwift-LICENSE.txt"; sourceTree = "<group>"; };
 		AD923AF716638655F381F404 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
@@ -189,6 +195,8 @@
 				57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */,
 				1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */,
 				4D73C185169CC3D8D67442EF /* ListeningProgressTests.swift */,
+				9FAD497333E06E584FBE9B39 /* PositionSyncTests.swift */,
+				8759C04C26A75CC535B09679 /* SeriesMetadataTests.swift */,
 				DF60019D8C98C2BBE192B507 /* ServerAudiobookTests.swift */,
 				0A4FCFD7F9F5550BFB3034FD /* TelegramLibraryTests.swift */,
 			);
@@ -220,6 +228,7 @@
 				5F83A0C3A530ADFC97764034 /* NotesExchange.swift */,
 				B273C586C172B7E0D5099F62 /* OfflineDictionary.swift */,
 				EAC7B6653C947D3BEDD87C48 /* PairingConfirmation.swift */,
+				66EF2D4C03A21C1ADAEE7602 /* PositionSync.swift */,
 				DB2A8DDF05DC6352F67F14C1 /* Reader.swift */,
 				26F78F97E40AC23598BBA508 /* ReaderTools.swift */,
 				9548678D7E8A1408523A7ED9 /* TelegramAudioResource.swift */,
@@ -445,6 +454,8 @@
 				C66DF317D708E54744A04A59 /* LibrarySortTests.swift in Sources */,
 				B21A48D3E75BA4FF27380185 /* LibraryTests.swift in Sources */,
 				5E531401C57E85331494029B /* ListeningProgressTests.swift in Sources */,
+				1DA27BDF9D9F5D15DDAC6C29 /* PositionSyncTests.swift in Sources */,
+				B7DB242DA1AB8C4809518AA7 /* SeriesMetadataTests.swift in Sources */,
 				4914C1B4CD8A48C756E33656 /* ServerAudiobookTests.swift in Sources */,
 				82A42F6E6D27287BF34217CD /* TelegramLibraryTests.swift in Sources */,
 			);
@@ -475,6 +486,7 @@
 				22682BB7759F4BDC21427C05 /* NotesExchange.swift in Sources */,
 				A4BDEFD178555A820715E6B9 /* OfflineDictionary.swift in Sources */,
 				2E7502CA5CB85B56CBF182A4 /* PairingConfirmation.swift in Sources */,
+				AA0861C622107CB3CAC3F1CB /* PositionSync.swift in Sources */,
 				D23C82109F0E07288C2B616D /* Reader.swift in Sources */,
 				BBE24CC51FD6BD3B410002ED /* ReaderTools.swift in Sources */,
 				58946D866A85E176149A6548 /* TelegramAudioResource.swift in Sources */,

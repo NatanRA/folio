@@ -102,7 +102,9 @@ class MainActivity : ComponentActivity() {
             finally { busy = null }
         }
     }
-    override fun onResume() { super.onResume(); if (::store.isInitialized) { local = store.all(); progressVersion++ } }
+    override fun onResume() { super.onResume(); if (::store.isInitialized) { local = store.all(); progressVersion++ }; PositionSync.schedule(this, immediate = true) }
+    /** Leaving the app is the last chance to hand this device's listening position over. */
+    override fun onStop() { super.onStop(); PositionSync.schedule(this, immediate = true) }
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString("artworkTarget", artworkTarget)
@@ -173,6 +175,8 @@ class MainActivity : ComponentActivity() {
                 val telegram = remember { TelegramLibrary.get(this@MainActivity) }
                 val telegramRevision by telegram.revision.collectAsState()
                 LaunchedEffect(telegramRevision) { local = store.all() }
+                val positionRevision by PositionSync.revision.collectAsState()
+                LaunchedEffect(positionRevision) { progressVersion++ }
                 LaunchedEffect(Unit) { if (telegram.configured) telegram.start() }
                 var appearanceOpen by remember { mutableStateOf(false) }
                 if (appearanceOpen) AppearanceSheet { appearanceOpen = false }
@@ -592,7 +596,7 @@ class MainActivity : ComponentActivity() {
                 position = snap?.startMs ?: it.toLong()
             }, onValueChangeFinished = {
                 player.seekBook(position)
-                prefs.edit().putLong("audio:${title.id}", position).apply()
+                prefs.edit().putLong("audio:${title.id}", position).putLong("audioModified:${title.id}", System.currentTimeMillis()).apply()
                 scrubbing = false
                 snappedChapter = null
             }, modifier = Modifier.testTag("audio-timeline"), valueRange = 0f..duration.toFloat().coerceAtLeast(1f), enabled = duration > 0 && playbackError == null, colors = SliderDefaults.colors(inactiveTrackColor = Panel),

@@ -45,6 +45,21 @@ object Opds {
     /** Chaptered containers first, so a book offering both arrives with its chapters intact. */
     val audioPreference = listOf("m4b", "m4a", "mp3", "aac", "flac", "ogg", "wav")
 
+    /**
+     * BookOrbit packs a series into a link title as "The Expanse #3", where BookLore states it in
+     * two meta elements. Both shapes are OPDS 1.x; neither needs OPDS 2.0.
+     */
+    fun seriesFromLinkTitle(title: String): SeriesInfo? {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return null
+        val marker = trimmed.lastIndexOf(" #")
+        // A title that is only a number names no series: "#3" is a position, not a collection.
+        if (marker < 0) return if (trimmed.startsWith("#")) null else SeriesInfo(trimmed)
+        val name = trimmed.substring(0, marker).trim()
+        if (name.isEmpty()) return null
+        return SeriesInfo(name, trimmed.substring(marker + 2).trim().toDoubleOrNull())
+    }
+
     fun format(mime: String): String? = when (mime.substringBefore(';').trim().lowercase()) {
         "application/epub+zip" -> "epub"
         "application/pdf" -> "pdf"
@@ -84,13 +99,20 @@ object Opds {
             val listened = acquisitions.filter { audioFormat(it.getAttribute("type")) != null }
                 .minByOrNull { audioPreference.indexOf(audioFormat(it.getAttribute("type"))) }
             if (edition == null && listened == null) return@mapNotNull null
+            val stated = entry.children("meta").let { metas ->
+                val name = metas.firstOrNull { it.getAttribute("property") == "belongs-to-collection" }?.textContent?.trim()
+                val position = metas.firstOrNull { it.getAttribute("property") == "group-position" }?.textContent?.trim()?.toDoubleOrNull()
+                if (name.isNullOrEmpty()) null else SeriesInfo(name, position)
+            } ?: links.firstOrNull { it.getAttribute("rel") == "http://opds-spec.org/sort/series" }
+                ?.let { seriesFromLinkTitle(it.getAttribute("title")) }
             val id = UUID.nameUUIDFromBytes((URI(base).let { "${it.scheme}://${it.authority}" } + entry.value("id")).toByteArray()).toString()
             Title(id, entry.value("title"), entry.children("author").joinToString { it.value("name") },
                 download = edition?.link(),
                 coverUrl = links.firstOrNull { it.getAttribute("rel") == "http://opds-spec.org/image" }?.link(),
                 description = entry.value("summary").ifBlank { entry.value("content") },
                 downloadFormat = edition?.let { format(it.getAttribute("type")) } ?: "epub",
-                audioDownload = listened?.link(), audioDownloadFormat = listened?.let { audioFormat(it.getAttribute("type")) })
+                audioDownload = listened?.link(), audioDownloadFormat = listened?.let { audioFormat(it.getAttribute("type")) },
+                seriesName = stated?.name, seriesPosition = stated?.index)
         }
         val catalog = entries.firstOrNull { it.value("id") == "urn:booklore:catalog:all" || it.value("title").equals("All Books", true) }
             ?.children("link")?.firstOrNull { it.getAttribute("rel") == "subsection" }?.link()

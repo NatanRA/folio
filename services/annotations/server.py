@@ -52,6 +52,50 @@ def merge(database, owner, document, bundle):
         db.executemany('INSERT OR REPLACE INTO notes VALUES (?,?,?,?)', [(owner, document, r['id'], json.dumps(r)) for r in known.values()])
         return encoded
 
+MAX_POSITIONS = 5000
+# Thirty days in milliseconds: generous for any audiobook, tight enough to reject nonsense.
+MAX_MEDIA_MS = 2_592_000_000
+
+def validate_positions(bundle):
+    """Listening positions, keyed by an id both platforms derive identically for the same book."""
+    if not isinstance(bundle, dict) or bundle.get('version') != 1:
+        raise ValueError('Invalid bundle')
+    records = bundle.get('records')
+    if not isinstance(records, list) or len(records) > MAX_POSITIONS:
+        raise ValueError('Too many positions')
+    for r in records:
+        if not isinstance(r, dict) or not isinstance(r.get('key'), str) or not re.fullmatch('[A-Za-z0-9:_.-]{1,200}', r['key']):
+            raise ValueError('Invalid book key')
+        for field in ('position', 'duration'):
+            if type(r.get(field)) is not int or not 0 <= r[field] <= MAX_MEDIA_MS:
+                raise ValueError('Invalid position')
+        if type(r.get('modified')) is not int or not 0 <= r['modified'] <= 2**53:
+            raise ValueError('Invalid revision')
+    return records
+
+def rank_position(record):
+    # The later write wins; an equal-time tie takes the further position so a replay never rewinds.
+    return record['modified'], record['position']
+
+def merge_positions(database, owner, bundle):
+    records = validate_positions(bundle)
+    with sqlite3.connect(database, timeout=30) as db:
+        db.execute('CREATE TABLE IF NOT EXISTS positions (owner TEXT, key TEXT, value TEXT, PRIMARY KEY(owner,key))')
+        db.execute('BEGIN IMMEDIATE')
+        known = {r[0]: json.loads(r[1]) for r in db.execute('SELECT key,value FROM positions WHERE owner=?', (owner,))}
+        for record in records:
+            old = known.get(record['key'])
+            if old is None or rank_position(record) > rank_position(old):
+                # Store only the known fields so one client cannot grow a row without bound.
+                known[record['key']] = {'key': record['key'], 'position': record['position'],
+                                        'duration': record['duration'], 'modified': record['modified']}
+        result = {'version': 1, 'records': list(known.values())}
+        encoded = json.dumps(result, ensure_ascii=False).encode()
+        if len(known) > MAX_POSITIONS or len(encoded) > MAX_BYTES:
+            raise ValueError('Position capacity reached')
+        db.executemany('INSERT OR REPLACE INTO positions VALUES (?,?,?)', [(owner, k, json.dumps(v)) for k, v in known.items()])
+        return encoded
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass  # Never log tokens or annotation contents.
@@ -63,8 +107,10 @@ class Handler(BaseHTTPRequestHandler):
         token = self.headers.get('Authorization', '').removeprefix('Bearer ')
         if not hmac.compare_digest(token.encode(), self.server.token.encode()):
             return self.reply(401, b'{"error":"Unauthorized"}')
-        document = self.path.rsplit('/', 1)[-1]
-        if not re.fullmatch('[0-9a-f]{64}', document):
+        route = self.path.rstrip('/').rsplit('/', 1)[-1]
+        # Listening positions are keyed per library, not per book file, so they get their own route.
+        positions = route == 'positions'
+        if not positions and not re.fullmatch('[0-9a-f]{64}', route):
             return self.reply(400, b'{"error":"Invalid document"}')
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -73,7 +119,10 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.settimeout(30)
             bundle = json.loads(self.rfile.read(length))
             # One private household library per deployment. Rotate token without changing ownership.
-            self.reply(200, merge(self.server.database, 'library', document, bundle))
+            if positions:
+                self.reply(200, merge_positions(self.server.database, 'library', bundle))
+            else:
+                self.reply(200, merge(self.server.database, 'library', route, bundle))
         except (ValueError, TypeError, KeyError, TimeoutError):
             self.reply(400, b'{"error":"Invalid annotations"}')
         except sqlite3.Error:

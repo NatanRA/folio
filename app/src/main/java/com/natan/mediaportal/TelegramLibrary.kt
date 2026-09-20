@@ -269,11 +269,15 @@ class TelegramLibrary private constructor(private val context: Context) {
         entries.value = (entries.value + (0 until messages.length()).mapNotNull { TelegramFile.parse(messages.getJSONObject(it)) }).distinctBy { it.key }
         val store = LibraryStore(context)
         val catalog = store.all().toMutableList()
+        val before = catalog.size
         entries.value.filter { it.audio }.forEach { entry ->
             val source = "$account:${entry.key}"
             if (catalog.none { it.telegramSource == source }) catalog.add(Title("tg-$account-${entry.chat}-${entry.message}", entry.title.ifBlank { entry.name.substringBeforeLast('.').replace('_', ' ') }, author = entry.performer, audio = "telegram://$account/${entry.chat}/${entry.message}/${Uri.encode(entry.name)}", telegramSource = source, addedAt = System.currentTimeMillis()))
         }
         store.save(catalog); revision.value++
+        // A device set up after the listening began only learns the book exists here, which is the
+        // first moment a position kept for it elsewhere can be applied.
+        if (catalog.size != before) PositionSync.schedule(context, immediate = true)
         loadArtwork()
     }
     @Synchronized private fun loadArtwork() {

@@ -245,6 +245,9 @@ struct TelegramError: LocalizedError {
                 }
             }
             try library.save()
+            // A scan is when a freshly set up device first learns these books exist, and so the
+            // first moment a listening position waiting on the server can be applied to one.
+            PositionSync.shared.exchange(library: library)
             loadArtwork()
         }
     }

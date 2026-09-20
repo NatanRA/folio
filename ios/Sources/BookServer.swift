@@ -58,18 +58,34 @@ final class FeedParser: NSObject, XMLParserDelegate {
 
     /// Chaptered containers first, so a book that offers both arrives with its chapters intact.
     static let audioPreference = ["m4b", "m4a", "mp3", "aac", "flac", "wav", "aiff"]
+
+    /// BookOrbit packs a series into a link title as "The Expanse #3", where BookLore uses two
+    /// separate meta elements. Both shapes are OPDS 1.x; neither needs OPDS 2.0.
+    static func series(fromLinkTitle title: String) -> (name: String, position: Double?)? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // A title that is only a number names no series: "#3" is a position, not a collection.
+        guard let marker = trimmed.range(of: " #", options: .backwards) else {
+            return trimmed.hasPrefix("#") ? nil : (trimmed, nil)
+        }
+        let name = trimmed[..<marker.lowerBound].trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        return (name, Double(trimmed[marker.upperBound...].trimmingCharacters(in: .whitespaces)))
+    }
     let base: URL
     var path: [String] = []
     var value = ""
     var entry: MediaBook?
     var entryID = ""
     var catalogLink: URL?
+    var metaProperty = ""
     var page = CatalogPage(books: [], next: nil, catalog: nil)
     var failure: Error?
     init(base: URL) { self.base = base }
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes a: [String: String] = [:]) {
         path.append(elementName); value = ""
         if elementName == "entry" { entry = MediaBook(title: "Untitled"); entryID = ""; catalogLink = nil }
+        if elementName == "meta" { metaProperty = a["property"] ?? "" }
         if elementName == "link", let href = a["href"] {
             do {
                 let url = try BookServer.resolve(href, base: base)
@@ -90,6 +106,10 @@ final class FeedParser: NSObject, XMLParserDelegate {
                             }
                         }
                     }
+                    if rel == "http://opds-spec.org/sort/series", let parsed = Self.series(fromLinkTitle: a["title"] ?? "") {
+                        entry?.seriesName = parsed.name
+                        if let position = parsed.position { entry?.seriesPosition = position }
+                    }
                     if rel == "http://opds-spec.org/image" || rel == "http://opds-spec.org/image/thumbnail" { entry?.remoteCover = url }
                     if rel == "subsection" { catalogLink = url }
                 } else if rel == "next" { page.next = url }
@@ -103,6 +123,10 @@ final class FeedParser: NSObject, XMLParserDelegate {
             if path.suffix(2) == ["entry", "title"] { entry?.title = text }
             if path.suffix(2) == ["entry", "id"] { entryID = text }
             if path.suffix(2) == ["author", "name"] { let author = entry?.author ?? ""; entry?.author = author + (author.isEmpty ? "" : ", ") + text }
+            if path.suffix(2) == ["entry", "meta"] {
+                if metaProperty == "belongs-to-collection", !text.isEmpty { entry?.seriesName = text }
+                if metaProperty == "group-position", let position = Double(text) { entry?.seriesPosition = position }
+            }
             if name == "entry", var book = entry {
                 if entryID == "urn:booklore:catalog:all" || book.title.lowercased() == "all books" { page.catalog = catalogLink }
                 // Keep a title offered only as an audiobook. Requiring an e-book edition here is

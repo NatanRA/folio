@@ -18,7 +18,8 @@ struct SeriesInfo: Equatable {
     var index: Double?
 }
 
-/// Orders the library grid. Series come from explicit title markers first, then from titles that share a leading phrase.
+/// Orders the library grid. Series come from the catalogue when it states one, then from explicit
+/// title markers, then from titles that share a leading phrase.
 enum LibrarySorting {
     private static let number = #"(\d+(?:\.\d+)?)"#
     private static let volume = #"(?:#|book|vol\.?|volume|part)"#
@@ -51,6 +52,15 @@ enum LibrarySorting {
     }
 
     static func series(for books: [MediaBook]) -> [String: SeriesInfo] {
+        // A catalogue that states the series beats anything guessed from a title. Books the server
+        // said nothing about still fall back to the heuristic, which is all a locally imported
+        // file ever has, so the guessing cannot simply be deleted.
+        var fromServer: [String: SeriesInfo] = [:]
+        for book in books {
+            guard let name = book.seriesName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { continue }
+            fromServer[book.id] = SeriesInfo(name: name, index: book.seriesPosition)
+        }
+        let books = books.filter { fromServer[$0.id] == nil }
         var named: [String: SeriesInfo] = [:], numbered: [String: SeriesInfo] = [:]
         for book in books {
             if let info = self.named(book.title) { named[book.id] = info } else if let info = self.numbered(book.title) { numbered[book.id] = info }
@@ -64,7 +74,7 @@ enum LibrarySorting {
             if longest >= 2 { result[book.id] = SeriesInfo(name: prefixText(of: book.title, count: longest), index: numbered[book.id]?.index) }
             else if let info = numbered[book.id] { result[book.id] = info }
         }
-        return result
+        return result.merging(fromServer) { _, server in server }
     }
 
     static func sorted(_ books: [MediaBook], by sort: LibrarySort) -> [MediaBook] {

@@ -18,12 +18,21 @@ struct MediaBook: Codable, Identifiable, Hashable {
     /// Optional so a library saved before audiobooks were read from the server still decodes.
     var audioDownload: URL?
     var audioDownloadFormat: String?
+    /// The series a catalogue says this book belongs to, which beats guessing from its title.
+    /// Optional so a library saved before the feed was read for series still decodes.
+    var seriesName: String?
+    var seriesPosition: Double?
     var remoteCover: URL?
     var locator: String?
     var readingProgress = 0.0
     var audioPosition = 0.0
     /// Optional so a library saved before listening progress was tracked still decodes.
     var audioDuration: Double?
+    /// When this device last wrote `audioPosition`, so a position arriving from another device only
+    /// wins when it is genuinely newer. `lastOpenedAt` cannot answer that: opening the e-book of the
+    /// same title bumps it too, which would let a stale audio position beat a fresher one.
+    /// Optional so a library saved before positions were synced still decodes.
+    var audioModifiedAt: Date?
     /// When this title was last read or listened to, so Home can offer the most recent one.
     /// Also optional: a library saved before this was tracked simply has no stamp yet.
     var lastOpenedAt: Date?
@@ -158,6 +167,7 @@ enum PortalError: LocalizedError {
             if let i = books.firstIndex(where: { $0.id == item.id }) {
                 books[i].download = item.download; books[i].downloadFormat = item.downloadFormat; books[i].remoteCover = item.remoteCover
                 books[i].audioDownload = item.audioDownload; books[i].audioDownloadFormat = item.audioDownloadFormat
+                books[i].seriesName = item.seriesName; books[i].seriesPosition = item.seriesPosition
             } else { var added = item; added.addedAt = item.addedAt ?? Date(); books.append(added) }
         }
         do { try save() } catch { books = old; throw error }

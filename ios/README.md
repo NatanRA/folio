@@ -21,6 +21,7 @@ The device build is packaged as an **unsigned IPA**. Import the IPA in SideStore
 - In-book search, bookmarks, nested chapter navigation, highlights, editable notes, native Look Up and saved vocabulary.
 - Reader paper, font, line-spacing and margin settings saved across books.
 - Annotation JSON export/import and optional private sync with Android. Identical book files are required. See `../services/annotations/README.md` for the separate service configuration.
+- Automatic listening-position sync for Telegram audiobooks over the same annotation service, with nothing to tap: positions are sent while listening, on pause and on backgrounding, and are collected on launch and after a Telegram scan. It is off until Notes sync is connected, and a failure changes no saved position.
 - Audiobook playback speed and sleep timer, including end of chapter.
 - Discover Gutenberg e-books and LibriVox audiobooks; downloaded chapter files play offline under one title.
 - PDFKit PDF reading and CBZ comic viewing with zoom, cover extraction and saved page. CBR is unsupported; EPUB-specific notes/search tools do not apply to these formats yet.

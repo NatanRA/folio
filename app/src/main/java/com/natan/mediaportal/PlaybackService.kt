@@ -24,6 +24,10 @@ import java.io.ByteArrayOutputStream
 /** Owns playback independently of the activity and publishes Android media controls. */
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
+    companion object {
+        /** The book the player holds, so a position pulled from another device never displaces it. */
+        @Volatile internal var activeBook: String? = null
+    }
     private lateinit var player: ExoPlayer
     private var session: MediaSession? = null
     private val resolver = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -34,13 +38,20 @@ class PlaybackService : MediaSessionService() {
     }
     private fun clearSleep() { progress.edit().remove("sleep:deadline").remove("sleep:chapter").apply() }
     private fun savePosition() {
-        val id = player.currentMediaItem?.mediaId ?: return
-        val edit = progress.edit().putLong("audio:$id", player.bookPosition).putString("activeAudio", id)
+        val id = player.currentMediaItem?.mediaId
+        activeBook = id
+        if (id == null) return
+        val position = player.bookPosition
+        val edit = progress.edit().putLong("audio:$id", position).putString("activeAudio", id)
             .putLong("lastOpened:$id", System.currentTimeMillis())
+        // Only a move counts as this device writing a position. A paused book ticking the clock
+        // every second would otherwise outrank a genuinely newer position from another device.
+        if (position != progress.getLong("audio:$id", -1)) edit.putLong("audioModified:$id", System.currentTimeMillis())
         // Home can only turn a saved position into progress if it also knows the length, and the
         // length is not known until the book has loaded, so record it whenever it is available.
         player.bookDuration.takeIf { it > 0 }?.let { edit.putLong("audioDuration:$id", it) }
         edit.apply()
+        if (player.isPlaying) PositionSync.schedule(this, immediate = false)
     }
     private val saveTick = object : Runnable {
         override fun run() {
@@ -81,9 +92,14 @@ class PlaybackService : MediaSessionService() {
                 progress.edit().putFloat("audioSpeed", parameters.speed).apply()
             }
             override fun onEvents(player: Player, events: Player.Events) { savePosition() }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Pausing or stopping is the moment the reader's other device most needs this.
+                if (!isPlaying) { savePosition(); PositionSync.schedule(this@PlaybackService, immediate = true) }
+            }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (oldPosition.mediaItem != null && oldPosition.mediaItem?.mediaId != newPosition.mediaItem?.mediaId) clearSleep()
-                oldPosition.mediaItem?.let { progress.edit().putLong("audio:${it.mediaId}", it.chapterStartMs + oldPosition.positionMs.coerceAtLeast(0)).apply() }
+                oldPosition.mediaItem?.let { progress.edit().putLong("audio:${it.mediaId}", it.chapterStartMs + oldPosition.positionMs.coerceAtLeast(0))
+                    .putLong("audioModified:${it.mediaId}", System.currentTimeMillis()).apply() }
             }
         })
         progress.registerOnSharedPreferenceChangeListener(sleepListener)
@@ -207,6 +223,8 @@ class PlaybackService : MediaSessionService() {
         progress.unregisterOnSharedPreferenceChangeListener(sleepListener)
         handler.removeCallbacks(saveTick)
         savePosition()
+        activeBook = null
+        PositionSync.schedule(this, immediate = true)
         session?.release(); player.release(); session = null
         resolver.shutdownNow()
         super.onDestroy()

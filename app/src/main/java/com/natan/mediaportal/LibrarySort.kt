@@ -29,7 +29,14 @@ object LibrarySorting {
         return SeriesInfo(name, match.groupValues.last().toDoubleOrNull())
     }
 
-    fun series(books: List<Title>): Map<String, SeriesInfo> {
+    fun series(allBooks: List<Title>): Map<String, SeriesInfo> {
+        // A catalogue that states the series beats anything guessed from a title. Books the server
+        // said nothing about still fall back to the heuristic, which is all a locally imported
+        // file ever has, so the guessing cannot simply be deleted.
+        val stated = allBooks.mapNotNull { book ->
+            book.seriesName?.trim()?.takeIf { it.isNotEmpty() }?.let { book.id to SeriesInfo(it, book.seriesPosition) }
+        }.toMap()
+        val books = allBooks.filterNot { it.id in stated }
         val named = books.mapNotNull { book -> named(book.name)?.let { book.id to it } }.toMap()
         val numbered = books.filterNot { it.id in named }.mapNotNull { book -> numbered(book.name)?.let { book.id to it } }.toMap()
         val words = books.associate { it.id to words(numbered[it.id]?.name ?: it.name) }
@@ -42,7 +49,7 @@ object LibrarySorting {
                 else -> numbered[book.id]?.let { book.id to it }
             }
         }.toMap()
-        return named + inferred
+        return named + inferred + stated
     }
 
     fun sorted(books: List<Title>, sort: LibrarySort): List<Title> = when (sort) {

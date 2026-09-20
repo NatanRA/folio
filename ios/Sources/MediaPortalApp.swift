@@ -11,11 +11,17 @@ let ebookTypes: [UTType] = [UTType(filenameExtension: "epub")!, .pdf, UTType(fil
     @StateObject var sync = KoSync()
     @AppStorage("appearance") var appearance = "System"
     @AppStorage("accent") var accent = "Aquamarine"
+    @Environment(\.scenePhase) var phase
     var body: some Scene {
         WindowGroup {
             PortalHome().environmentObject(library).environmentObject(server).environmentObject(audio).environmentObject(sync)
                 .tint(portalAccent(accent))
                 .onChange(of: appearance, initial: true) { _, _ in applyWindowScheme(appearance) }
+                // Coming to the front is when a device first has a chance to learn where the reader
+                // got to elsewhere; going to the back is its last chance to send where it got to.
+                .onChange(of: phase, initial: true) { _, value in
+                    if value == .active || value == .background { PositionSync.shared.exchange(library: library) }
+                }
                 .task { TelegramLibrary.shared.library = library; if TelegramLibrary.shared.configured { TelegramLibrary.shared.start() } }
                 .onOpenURL { url in
                     // A pairing link asks to connect a library; it is not a book to import.

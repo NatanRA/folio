@@ -9,7 +9,7 @@ struct AudioChapter: Identifiable {
 }
 
 @MainActor final class AudioPlayer: ObservableObject {
-    @Published var bookID: String?
+    @Published var bookID: String? { didSet { PositionSync.shared.playing = bookID } }
     @Published var playing = false
     @Published var position = 0.0
     @Published var duration = 0.0
@@ -78,7 +78,10 @@ struct AudioChapter: Identifiable {
                 self.position = seconds.isFinite ? self.trackStart + seconds : self.trackStart
                 self.playing = self.player.rate > 0
                 if let end = self.sleepChapterEnd, self.position >= end { self.stopForSleep() }
-                if let id = self.bookID { self.library?.update(id) { $0.audioPosition = self.position; $0.lastOpenedAt = Date(); if self.duration > 0 { $0.audioDuration = self.duration } } }
+                if let id = self.bookID, let library = self.library {
+                    library.update(id) { $0.audioPosition = self.position; $0.audioModifiedAt = Date(); $0.lastOpenedAt = Date(); if self.duration > 0 { $0.audioDuration = self.duration } }
+                    PositionSync.shared.pushWhileListening(library: library)
+                }
                 self.publish()
             }
         }
@@ -171,7 +174,7 @@ struct AudioChapter: Identifiable {
             player.playImmediately(atRate: speed); playing = true; publish()
         } catch { self.error = error.localizedDescription }
     }
-    func pause() { player.pause(); playing = false; publish() }
+    func pause() { player.pause(); playing = false; publish(); if let library { PositionSync.shared.exchange(library: library) } }
     func stopForOffline() { pause(); telegramResource?.cancel(); telegramResource = nil; player.replaceCurrentItem(with: nil); bookID = nil }
     func seek(_ seconds: Double) {
         guard duration > 0 else { return }
@@ -181,7 +184,7 @@ struct AudioChapter: Identifiable {
             if index != trackIndex { let resume = playing; installTrack(index); if resume { player.playImmediately(atRate: speed) } }
         }
         player.seek(to: CMTime(seconds: max(0, position - trackStart), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        if let id = bookID { library?.update(id) { $0.audioPosition = position } }; publish()
+        if let id = bookID { library?.update(id) { $0.audioPosition = position; $0.audioModifiedAt = Date() } }; publish()
     }
     private func publish() {
         guard let id = bookID, let book = library?.book(id) else { return }
