@@ -282,9 +282,10 @@ struct BookDetail: View {
                         if book.ebook != nil { Button { reader = true } label: { formatLabel("E-book", icon: "book", progress: book.finished ? "Finished" : "\(Int(book.readingProgress * 100))%") }.buttonStyle(.plain) }
                         else if book.download != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.download(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "E-book") }.buttonStyle(.plain).disabled(library.busy) }
                         if book.audio != nil { NavigationLink { PlayerScreen(id: id) } label: { formatLabel("Audiobook", icon: "headphones", progress: mediaTime(book.audioPosition)) }.buttonStyle(.plain) }
+                        else if book.audioDownload != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.downloadAudio(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "Audiobook") }.buttonStyle(.plain).disabled(library.busy) }
                     }
                     if book.ebook == nil && book.download == nil { Button("Add e-book") { audioImport = false; importer = true }.frame(minHeight: 44) }
-                    if book.audio == nil { Button("Add audiobook") { audioImport = true; importer = true }.frame(minHeight: 44) }
+                    if book.audio == nil && book.audioDownload == nil { Button("Add audiobook") { audioImport = true; importer = true }.frame(minHeight: 44) }
                     if book.streaming { Button("Keep offline") { Task {
                         do { guard let url = book.audio.flatMap(URL.init(string:)) else { return }; let entry = try await TelegramLibrary.shared.resolve(url); audio.stopForOffline(); TelegramLibrary.shared.download(entry, library: library) }
                         catch { library.error = error.localizedDescription }

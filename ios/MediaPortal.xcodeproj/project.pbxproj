@@ -24,6 +24,7 @@
 		39D61A9B21246A9148C454FA /* TelegramSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0C81775C4377531EFDD858 /* TelegramSettings.swift */; };
 		3C2D4AA15A086AA70914E523 /* TelegramIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761DC45E4C90A7706EA80DB6 /* TelegramIdentity.swift */; };
 		4079D8D6C04AF41FA355DD84 /* SwiftSoup-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 91640C7451F72BC9904CF2B8 /* SwiftSoup-LICENSE.txt */; };
+		4914C1B4CD8A48C756E33656 /* ServerAudiobookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF60019D8C98C2BBE192B507 /* ServerAudiobookTests.swift */; };
 		5481FC0E095A81EABE139F6C /* BookServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8A439BE4A01969E79B8684 /* BookServer.swift */; };
 		58946D866A85E176149A6548 /* TelegramAudioResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9548678D7E8A1408523A7ED9 /* TelegramAudioResource.swift */; };
 		5A577196763A832954A216F8 /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3346470DB2B4281F863E24 /* Dictionary.swift */; };
@@ -135,6 +136,7 @@
 		DC8A439BE4A01969E79B8684 /* BookServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookServer.swift; sourceTree = "<group>"; };
 		DDDC886A6E13FA3BC72B2F74 /* ConnectionPasteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPasteTests.swift; sourceTree = "<group>"; };
 		DF3346470DB2B4281F863E24 /* Dictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictionary.swift; sourceTree = "<group>"; };
+		DF60019D8C98C2BBE192B507 /* ServerAudiobookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAudiobookTests.swift; sourceTree = "<group>"; };
 		E02ADADE92A0750ED94CF388 /* SQLite.swift-LICENSE.txt.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SQLite.swift-LICENSE.txt.txt"; sourceTree = "<group>"; };
 		EAC7B6653C947D3BEDD87C48 /* PairingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConfirmation.swift; sourceTree = "<group>"; };
 		ECB230977E565F73D215077A /* swift-toolkit-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "swift-toolkit-LICENSE.txt"; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 				57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */,
 				1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */,
 				4D73C185169CC3D8D67442EF /* ListeningProgressTests.swift */,
+				DF60019D8C98C2BBE192B507 /* ServerAudiobookTests.swift */,
 				0A4FCFD7F9F5550BFB3034FD /* TelegramLibraryTests.swift */,
 			);
 			path = Tests;
@@ -442,6 +445,7 @@
 				C66DF317D708E54744A04A59 /* LibrarySortTests.swift in Sources */,
 				B21A48D3E75BA4FF27380185 /* LibraryTests.swift in Sources */,
 				5E531401C57E85331494029B /* ListeningProgressTests.swift in Sources */,
+				4914C1B4CD8A48C756E33656 /* ServerAudiobookTests.swift in Sources */,
 				82A42F6E6D27287BF34217CD /* TelegramLibraryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -144,6 +144,15 @@ class MainActivity : ComponentActivity() {
             finally { busy = null }
         }
     }
+    private fun downloadAudio(title: Title) {
+        if (busy != null) return
+        lifecycleScope.launch {
+            busy = "Downloading ${title.name}…"
+            try { selected = server.downloadAudio(title, store); local = store.all() }
+            catch (e: Exception) { error = if (e is IllegalStateException || e is IllegalArgumentException) e.message else "Download failed. Check your connection and try again." }
+            finally { busy = null }
+        }
+    }
     private fun read(title: Title) { openReader.launch(Intent(this, if (title.ebook?.substringAfterLast('.')?.lowercase() in setOf("pdf", "cbz")) FixedReaderActivity::class.java else ReaderActivity::class.java).putExtra("titleId", title.id)) }
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -412,13 +421,15 @@ class MainActivity : ComponentActivity() {
                     Modifier.weight(1f).testTag("ebook-format"),
                     enabled = title.ebook != null || (connected && busy == null)
                 ) { if (title.ebook != null) read(title) else download(title) }
-                if (title.audio != null) FormatButton(
-                    "Audiobook", Icons.Outlined.Headphones, "${audioTime(audioPosition)} listened",
-                    if (audioDuration > 0) (audioPosition.toFloat() / audioDuration).coerceIn(0f, 1f) else null,
-                    Modifier.weight(1f).testTag("audio-format"), onClick = onListen
-                )
+                if (title.audio != null || title.audioDownload != null) FormatButton(
+                    "Audiobook", Icons.Outlined.Headphones,
+                    if (title.audio == null) "Download" else "${audioTime(audioPosition)} listened",
+                    if (title.audio != null && audioDuration > 0) (audioPosition.toFloat() / audioDuration).coerceIn(0f, 1f) else null,
+                    Modifier.weight(1f).testTag("audio-format"),
+                    enabled = title.audio != null || (connected && busy == null)
+                ) { if (title.audio != null) onListen() else downloadAudio(title) }
             }
-            if (title.audio == null) TextButton(onClick = { attachTo(title, true) }, enabled = busy == null, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("+ Add audiobook") }
+            if (title.audio == null && title.audioDownload == null) TextButton(onClick = { attachTo(title, true) }, enabled = busy == null, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("+ Add audiobook") }
             if (title.streaming) {
                 val telegram = remember { TelegramLibrary.get(this@MainActivity) }
                 val transfer by telegram.activity.collectAsState()

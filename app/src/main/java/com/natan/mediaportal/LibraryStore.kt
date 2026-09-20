@@ -20,7 +20,9 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.coverFitting
 
 data class Title(val id: String, val name: String, val author: String = "", val ebook: String? = null, val audio: String? = null,
-    val download: String? = null, val coverUrl: String? = null, val description: String = "", val downloadFormat: String = "epub", val telegramSource: String? = null, val addedAt: Long = 0) {
+    val download: String? = null, val coverUrl: String? = null, val description: String = "", val downloadFormat: String = "epub", val telegramSource: String? = null, val addedAt: Long = 0,
+    /** The server's audiobook edition, kept apart from the e-book one so a title can offer both. */
+    val audioDownload: String? = null, val audioDownloadFormat: String? = null) {
     val streaming get() = audio?.startsWith("telegram://") == true
     val isLocal get() = ebook != null || (audio != null && !streaming)
 }
@@ -35,14 +37,15 @@ class LibraryStore(private val context: Context) {
             Title(item.getString("id"), item.getString("name"), item.optString("author"),
                 item.optString("ebook").takeIf { it.isNotBlank() }, item.optString("audio").takeIf { it.isNotBlank() },
                 item.optString("download").takeIf { it.isNotBlank() }, item.optString("coverUrl").takeIf { it.isNotBlank() }, item.optString("description"), item.optString("downloadFormat", "epub"), item.optString("telegramSource").takeIf { it.isNotBlank() },
-                item.optLong("addedAt").takeIf { it > 0 } ?: addedBackfill(item.optString("ebook"), item.optString("audio")))
+                item.optLong("addedAt").takeIf { it > 0 } ?: addedBackfill(item.optString("ebook"), item.optString("audio")),
+                item.optString("audioDownload").takeIf { it.isNotBlank() }, item.optString("audioDownloadFormat").takeIf { it.isNotBlank() })
         }
     }
     /** Books saved before timestamps existed take the date their file landed on this device. */
     private fun addedBackfill(vararg names: String) = names.filter { it.isNotBlank() }.map { file(it) }.filter { it.exists() }.minOfOrNull { it.lastModified() } ?: 0L
     fun save(titles: List<Title>) {
         val array = JSONArray()
-        titles.forEach { t -> array.put(JSONObject().put("id", t.id).put("name", t.name).put("author", t.author).put("ebook", t.ebook ?: "").put("audio", t.audio ?: "").put("download", t.download ?: "").put("coverUrl", t.coverUrl ?: "").put("description", t.description).put("downloadFormat", t.downloadFormat).put("telegramSource", t.telegramSource ?: "").put("addedAt", t.addedAt)) }
+        titles.forEach { t -> array.put(JSONObject().put("id", t.id).put("name", t.name).put("author", t.author).put("ebook", t.ebook ?: "").put("audio", t.audio ?: "").put("download", t.download ?: "").put("coverUrl", t.coverUrl ?: "").put("description", t.description).put("downloadFormat", t.downloadFormat).put("telegramSource", t.telegramSource ?: "").put("addedAt", t.addedAt).put("audioDownload", t.audioDownload ?: "").put("audioDownloadFormat", t.audioDownloadFormat ?: "")) }
         val stream = catalog.startWrite()
         try { stream.write(array.toString().toByteArray()); catalog.finishWrite(stream) }
         catch (error: Exception) { catalog.failWrite(stream); throw error }

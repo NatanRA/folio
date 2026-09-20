@@ -27,6 +27,24 @@ data class ServerAccount(val url: String, val user: String, val password: String
 data class CatalogPage(val books: List<Title>, val next: String?, val catalog: String?)
 
 object Opds {
+    /**
+     * Audiobook editions a catalogue may offer. Only formats Media3 can actually play are listed:
+     * offering a download the player cannot open would be worse than not offering it.
+     */
+    fun audioFormat(mime: String): String? = when (mime.substringBefore(';').trim().lowercase()) {
+        "audio/mpeg", "audio/mp3" -> "mp3"
+        "audio/mp4", "audio/x-m4b", "audio/m4b" -> "m4b"
+        "audio/x-m4a", "audio/m4a" -> "m4a"
+        "audio/aac", "audio/aacp" -> "aac"
+        "audio/flac", "audio/x-flac" -> "flac"
+        "audio/ogg", "audio/opus" -> "ogg"
+        "audio/wav", "audio/x-wav", "audio/wave" -> "wav"
+        else -> null
+    }
+
+    /** Chaptered containers first, so a book offering both arrives with its chapters intact. */
+    val audioPreference = listOf("m4b", "m4a", "mp3", "aac", "flac", "ogg", "wav")
+
     fun format(mime: String): String? = when (mime.substringBefore(';').trim().lowercase()) {
         "application/epub+zip" -> "epub"
         "application/pdf" -> "pdf"
@@ -63,11 +81,16 @@ object Opds {
             if (acquisitions.isEmpty()) return@mapNotNull null
             val edition = acquisitions.filter { format(it.getAttribute("type")) != null }
                 .minByOrNull { listOf("epub", "pdf", "cbz").indexOf(format(it.getAttribute("type"))) }
+            val listened = acquisitions.filter { audioFormat(it.getAttribute("type")) != null }
+                .minByOrNull { audioPreference.indexOf(audioFormat(it.getAttribute("type"))) }
+            if (edition == null && listened == null) return@mapNotNull null
             val id = UUID.nameUUIDFromBytes((URI(base).let { "${it.scheme}://${it.authority}" } + entry.value("id")).toByteArray()).toString()
             Title(id, entry.value("title"), entry.children("author").joinToString { it.value("name") },
                 download = edition?.link(),
                 coverUrl = links.firstOrNull { it.getAttribute("rel") == "http://opds-spec.org/image" }?.link(),
-                description = entry.value("summary"), downloadFormat = edition?.let { format(it.getAttribute("type")) } ?: "epub")
+                description = entry.value("summary").ifBlank { entry.value("content") },
+                downloadFormat = edition?.let { format(it.getAttribute("type")) } ?: "epub",
+                audioDownload = listened?.link(), audioDownloadFormat = listened?.let { audioFormat(it.getAttribute("type")) })
         }
         val catalog = entries.firstOrNull { it.value("id") == "urn:booklore:catalog:all" || it.value("title").equals("All Books", true) }
             ?.children("link")?.firstOrNull { it.getAttribute("rel") == "subsection" }?.link()
@@ -163,6 +186,23 @@ class BookServer(private val context: Context, private val credentialNamespace: 
         val temp = File.createTempFile("cover-", ".jpg", context.cacheDir)
         try { request(account, url, temp, 8L * 1024 * 1024); temp.copyTo(file, true); file }
         catch (_: Exception) { null } finally { temp.delete() }
+    }
+    /**
+     * Downloads the catalogue's audiobook edition and files it against the same title, so a book
+     * both read and listened to stays one entry with two formats.
+     */
+    suspend fun downloadAudio(title: Title, store: LibraryStore): Title = withContext(Dispatchers.IO) {
+        val account = account() ?: error("Connect your server first.")
+        val link = title.audioDownload ?: error("This title has no supported audiobook edition.")
+        val format = title.audioDownloadFormat ?: error("This title has no supported audiobook edition.")
+        require(format in Opds.audioPreference) { "Unsupported audiobook format." }
+        val temp = File.createTempFile("audiobook-", ".${format}", context.cacheDir)
+        try {
+            // An audiobook is an order of magnitude larger than an e-book; the e-book cap would
+            // reject almost every real one.
+            request(account, link, temp, 2L * 1024 * 1024 * 1024)
+            store.import(android.net.Uri.fromFile(temp), true, title.id, title)
+        } finally { temp.delete() }
     }
     suspend fun download(title: Title, store: LibraryStore): Title = withContext(Dispatchers.IO) {
         val account = account() ?: error("Connect your server first.")

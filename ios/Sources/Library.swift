@@ -14,6 +14,10 @@ struct MediaBook: Codable, Identifiable, Hashable {
     var cover: String?
     var download: URL?
     var downloadFormat: String?
+    /// The server's audiobook edition, kept apart from the e-book one so a title can offer both.
+    /// Optional so a library saved before audiobooks were read from the server still decodes.
+    var audioDownload: URL?
+    var audioDownloadFormat: String?
     var remoteCover: URL?
     var locator: String?
     var readingProgress = 0.0
@@ -153,6 +157,7 @@ enum PortalError: LocalizedError {
         for item in remote {
             if let i = books.firstIndex(where: { $0.id == item.id }) {
                 books[i].download = item.download; books[i].downloadFormat = item.downloadFormat; books[i].remoteCover = item.remoteCover
+                books[i].audioDownload = item.audioDownload; books[i].audioDownloadFormat = item.audioDownloadFormat
             } else { var added = item; added.addedAt = item.addedAt ?? Date(); books.append(added) }
         }
         do { try save() } catch { books = old; throw error }

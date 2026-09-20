@@ -39,6 +39,25 @@ final class FeedParser: NSObject, XMLParserDelegate {
         default: return nil
         }
     }
+
+    /// Audiobook editions a catalogue may offer. Only formats this device can actually play are
+    /// listed: offering a download the player cannot open would be worse than not offering it.
+    /// Opus is deliberately absent, as AVFoundation does not decode it.
+    static func audioFormat(_ mime: String) -> String? {
+        switch mime.components(separatedBy: ";")[0].trimmingCharacters(in: .whitespaces).lowercased() {
+        case "audio/mpeg", "audio/mp3": return "mp3"
+        case "audio/mp4", "audio/x-m4b", "audio/m4b": return "m4b"
+        case "audio/x-m4a", "audio/m4a": return "m4a"
+        case "audio/aac", "audio/aacp": return "aac"
+        case "audio/flac", "audio/x-flac": return "flac"
+        case "audio/wav", "audio/x-wav", "audio/wave": return "wav"
+        case "audio/aiff", "audio/x-aiff": return "aiff"
+        default: return nil
+        }
+    }
+
+    /// Chaptered containers first, so a book that offers both arrives with its chapters intact.
+    static let audioPreference = ["m4b", "m4a", "mp3", "aac", "flac", "wav", "aiff"]
     let base: URL
     var path: [String] = []
     var value = ""
@@ -56,10 +75,19 @@ final class FeedParser: NSObject, XMLParserDelegate {
                 let url = try BookServer.resolve(href, base: base)
                 let rel = a["rel"] ?? ""
                 if entry != nil {
-                    if rel.hasPrefix("http://opds-spec.org/acquisition"), let format = Self.format(a["type"] ?? "") {
-                        let order = ["epub", "pdf", "cbz"]
-                        if entry?.download == nil || order.firstIndex(of: format)! < (order.firstIndex(of: entry?.downloadFormat ?? "epub") ?? 3) {
-                            entry?.download = url; entry?.downloadFormat = format
+                    if rel.hasPrefix("http://opds-spec.org/acquisition") {
+                        let type = a["type"] ?? ""
+                        if let format = Self.format(type) {
+                            let order = ["epub", "pdf", "cbz"]
+                            if entry?.download == nil || order.firstIndex(of: format)! < (order.firstIndex(of: entry?.downloadFormat ?? "epub") ?? 3) {
+                                entry?.download = url; entry?.downloadFormat = format
+                            }
+                        } else if let audio = Self.audioFormat(type) {
+                            let order = Self.audioPreference
+                            let current = entry?.audioDownloadFormat.flatMap { order.firstIndex(of: $0) } ?? order.count
+                            if entry?.audioDownload == nil || (order.firstIndex(of: audio) ?? order.count) < current {
+                                entry?.audioDownload = url; entry?.audioDownloadFormat = audio
+                            }
                         }
                     }
                     if rel == "http://opds-spec.org/image" || rel == "http://opds-spec.org/image/thumbnail" { entry?.remoteCover = url }
@@ -77,9 +105,12 @@ final class FeedParser: NSObject, XMLParserDelegate {
             if path.suffix(2) == ["author", "name"] { let author = entry?.author ?? ""; entry?.author = author + (author.isEmpty ? "" : ", ") + text }
             if name == "entry", var book = entry {
                 if entryID == "urn:booklore:catalog:all" || book.title.lowercased() == "all books" { page.catalog = catalogLink }
-                if book.download != nil {
+                // Keep a title offered only as an audiobook. Requiring an e-book edition here is
+                // what made audiobooks on the server invisible. `download` stays the preferred
+                // identity so existing books keep the id they were saved under.
+                if let identity = book.download ?? book.audioDownload {
                     let origin = "\(base.scheme ?? "")://\(base.host ?? ""):\(base.port ?? 443)"
-                    book.id = SHA256.hash(data: Data((origin + (entryID.isEmpty ? book.download!.absoluteString : entryID)).utf8)).map { String(format: "%02x", $0) }.joined()
+                    book.id = SHA256.hash(data: Data((origin + (entryID.isEmpty ? identity.absoluteString : entryID)).utf8)).map { String(format: "%02x", $0) }.joined()
                     page.books.append(book)
                 }
                 entry = nil
@@ -145,14 +176,29 @@ final class FeedParser: NSObject, XMLParserDelegate {
         }
     }
     func download(_ book: MediaBook, library: Library) async throws {
-        guard let account, let url = book.download else { throw PortalError.message("Connect your BookLore account first.") }
+        guard let account, let url = book.download else { throw PortalError.message("Connect your library first.") }
         let format = book.downloadFormat ?? "epub"
         guard ["epub", "pdf", "cbz"].contains(format) else { throw PortalError.message("Unsupported e-book format.") }
-        let temp = try await fetch(url, account: account, limit: 268_435_456)
+        try await keep(url, as: format, audio: false, account: account, limit: 268_435_456, book: book, library: library)
+    }
+
+    /// Downloads the catalogue's audiobook edition and files it against the same title, so a book
+    /// read and listened to stays one entry with two formats.
+    func downloadAudio(_ book: MediaBook, library: Library) async throws {
+        guard let account, let url = book.audioDownload else { throw PortalError.message("Connect your library first.") }
+        let format = book.audioDownloadFormat ?? "mp3"
+        guard FeedParser.audioPreference.contains(format) else { throw PortalError.message("Unsupported audiobook format.") }
+        // An audiobook is an order of magnitude larger than an e-book; the e-book cap would reject
+        // almost every real one.
+        try await keep(url, as: format, audio: true, account: account, limit: 2_147_483_648, book: book, library: library)
+    }
+
+    private func keep(_ url: URL, as format: String, audio: Bool, account: ServerAccount, limit: Int, book: MediaBook, library: Library) async throws {
+        let temp = try await fetch(url, account: account, limit: limit)
         let document = temp.appendingPathExtension(format)
         defer { try? FileManager.default.removeItem(at: temp); try? FileManager.default.removeItem(at: document) }
         try FileManager.default.moveItem(at: temp, to: document)
-        _ = try await library.importFile(document, audio: false, linking: book.id)
+        _ = try await library.importFile(document, audio: audio, linking: book.id)
     }
     func disconnect() throws { try SecureStore.write(nil, name: "booklore"); account = nil }
 }
