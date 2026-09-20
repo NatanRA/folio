@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
     namespace = "com.natan.mediaportal"
     compileSdk = 36
-    defaultConfig { applicationId = "com.natan.mediaportal"; minSdk = 26; targetSdk = 36; versionCode = 55; versionName = "0.9.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "com.natan.mediaportal"; minSdk = 26; targetSdk = 36; versionCode = 56; versionName = "0.9.2"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true }
     compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

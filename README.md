@@ -108,6 +108,14 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
 
+### 0.9.2
+
+Audiobooks held on your library server are downloadable at last: Folio used to discard every audio
+edition a catalogue offered. Series now come from the catalogue rather than being guessed from
+title strings, in both the BookLore and BookOrbit shapes, and listening positions for Telegram
+audiobooks follow you between devices through the private annotation service.
+[Full notes](docs/releases/v0.9.2.md).
+
 ### 0.9.1
 
 Telegram no longer asks for an API ID and API hash. The app carries its own application identity,
