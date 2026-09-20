@@ -1,0 +1,824 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		000CCC7A36D498066857629C /* swift-toolkit-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = ECB230977E565F73D215077A /* swift-toolkit-LICENSE.txt */; };
+		018D75B39D8CCB9F62CA99A1 /* ZIPFoundation-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7DFF22C2BE44CF3C3AB4CC44 /* ZIPFoundation-LICENSE.txt */; };
+		039BFC487FEDB4A9DB00EBEC /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = F79CAED253E3CB7527FD4CA7 /* ReadiumNavigator */; };
+		0C5E1B81EA8206770FC6668D /* Zip-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = CB0451BFC510AA92C2115B2A /* Zip-LICENSE.txt */; };
+		14A8EB6A8A449CD6892E0B08 /* alice.epub in Resources */ = {isa = PBXBuildFile; fileRef = CD06FB4BBD8AC4FFAF1413D0 /* alice.epub */; };
+		186B77F45187B742E2963F92 /* TDLib.txt in Resources */ = {isa = PBXBuildFile; fileRef = 62EE249E7A949BD3159FA86F /* TDLib.txt */; };
+		22682BB7759F4BDC21427C05 /* NotesExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F83A0C3A530ADFC97764034 /* NotesExchange.swift */; };
+		29FBDDA9A04FDCA43AC39009 /* MediaPortalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C320CDD8F0A78B8C6EAC26 /* MediaPortalApp.swift */; };
+		2B2C1145E79AC1B4F037A973 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 69109F4CA1AD44FAAC9DE5B3 /* Assets.xcassets */; };
+		2E7502CA5CB85B56CBF182A4 /* PairingConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAC7B6653C947D3BEDD87C48 /* PairingConfirmation.swift */; };
+		361D5451189775E808EF467A /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = F196922E5C0E8249DB40DF9E /* ReadiumShared */; };
+		371AF8386B77F660F39012CD /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADCEB94A5E74D14B23D808B7 /* Library.swift */; };
+		37B60BF8D936F7B86C8D8140 /* CryptoSwift-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA8B434B66CD0C5371752AC2 /* CryptoSwift-LICENSE.txt */; };
+		38ACEDFEED141DC4452CE61F /* LibrarySort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509F4FD48B62B72C5FC1118B /* LibrarySort.swift */; };
+		39D61A9B21246A9148C454FA /* TelegramSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0C81775C4377531EFDD858 /* TelegramSettings.swift */; };
+		3C2D4AA15A086AA70914E523 /* TelegramIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761DC45E4C90A7706EA80DB6 /* TelegramIdentity.swift */; };
+		4079D8D6C04AF41FA355DD84 /* SwiftSoup-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 91640C7451F72BC9904CF2B8 /* SwiftSoup-LICENSE.txt */; };
+		5481FC0E095A81EABE139F6C /* BookServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC8A439BE4A01969E79B8684 /* BookServer.swift */; };
+		58946D866A85E176149A6548 /* TelegramAudioResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9548678D7E8A1408523A7ED9 /* TelegramAudioResource.swift */; };
+		5A577196763A832954A216F8 /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3346470DB2B4281F863E24 /* Dictionary.swift */; };
+		5D94C02207782090CEC50464 /* TDLib.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 384882AE925A7EDC5B6560E9 /* TDLib.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5E531401C57E85331494029B /* ListeningProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D73C185169CC3D8D67442EF /* ListeningProgressTests.swift */; };
+		5F4C98D07D7EE1C2F33A588B /* FixedReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F2947DAC5BD5505F963F52E /* FixedReader.swift */; };
+		5F5046493E11785CD18A76BC /* ConnectionPasteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDC886A6E13FA3BC72B2F74 /* ConnectionPasteTests.swift */; };
+		64F7E05254D1051AFD8A85FD /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD923AF716638655F381F404 /* AudioPlayer.swift */; };
+		66E6E724302561871DCB4D6D /* GCDWebServer-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 11A1489D93027B0053952490 /* GCDWebServer-LICENSE.txt */; };
+		68D79A6ACE746D8EA6876267 /* OpenSSL.txt in Resources */ = {isa = PBXBuildFile; fileRef = B2E10CC5C2A587D5C9537184 /* OpenSSL.txt */; };
+		68FF85E75E98EE46F5F7AD81 /* TDLib.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384882AE925A7EDC5B6560E9 /* TDLib.xcframework */; };
+		6A7282C101BD93E445BA446B /* TelegramLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB6AE8D73CD98CFCF30BCC4 /* TelegramLibrary.swift */; };
+		6C845D0AD8A2D4B160BFACE5 /* ReadiumZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 93F43F7FE6CB6C44024FA06C /* ReadiumZIPFoundation */; };
+		76D5FA6C1C48C2D87B99A168 /* comic.cbz in Resources */ = {isa = PBXBuildFile; fileRef = 9D3ADCC35432199D67374969 /* comic.cbz */; };
+		80C317A8E07B45639697110D /* wordnet.db.gzip in Resources */ = {isa = PBXBuildFile; fileRef = 2439FDBF9E91D6D4C472D6B9 /* wordnet.db.gzip */; };
+		82A42F6E6D27287BF34217CD /* TelegramLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4FCFD7F9F5550BFB3034FD /* TelegramLibraryTests.swift */; };
+		8B1A5BE6C8AC15EEA7BB0367 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 7526DF77D019E0C6B79F452C /* ReadiumStreamer */; };
+		9A94C30B618580A35170A375 /* PortalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A73C2F173CA6C7CC2ED5FC1F /* PortalUITests.swift */; };
+		A4BDEFD178555A820715E6B9 /* OfflineDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B273C586C172B7E0D5099F62 /* OfflineDictionary.swift */; };
+		A7FA0EB2A36D534456A55DC3 /* DictionaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67E1C069799E9CB45A70508 /* DictionaryTests.swift */; };
+		A8EEC5A19822A5599FBC9129 /* DifferenceKit-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = ECF68075F4BF696D46B1209C /* DifferenceKit-LICENSE.txt */; };
+		B21A48D3E75BA4FF27380185 /* LibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */; };
+		BBE24CC51FD6BD3B410002ED /* ReaderTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F78F97E40AC23598BBA508 /* ReaderTools.swift */; };
+		C0A6F4CD11D3C28D893989B0 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6714931500F7EEDAA4CF703C /* Discovery.swift */; };
+		C66DF317D708E54744A04A59 /* LibrarySortTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */; };
+		CE02FE53A070244C72E240F8 /* ConnectionPaste.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4533A5D53CCBC4294E814700 /* ConnectionPaste.swift */; };
+		D23C82109F0E07288C2B616D /* Reader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2A8DDF05DC6352F67F14C1 /* Reader.swift */; };
+		DA6579ABAFE85B9176028BE8 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = F6021C42519E445CD02873C4 /* sample.pdf */; };
+		E4DA026DBC36CFA44E183627 /* TDLib.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384882AE925A7EDC5B6560E9 /* TDLib.xcframework */; };
+		E6F81FE16D241A2E1A707C3A /* KoSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97346D65B15BCA7EE0148072 /* KoSync.swift */; };
+		E8A46E191A9A57D1C19C39B4 /* WordNet-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = CD5502D3D712258950DC7920 /* WordNet-LICENSE.txt */; };
+		F082EC7CC2E221846FDD9617 /* chaptered.m4b in Resources */ = {isa = PBXBuildFile; fileRef = 905BB87D25B2574FA5C630F3 /* chaptered.m4b */; };
+		F9C99C661247F3EBBDC26D56 /* SQLite.swift-LICENSE.txt.txt in Resources */ = {isa = PBXBuildFile; fileRef = E02ADADE92A0750ED94CF388 /* SQLite.swift-LICENSE.txt.txt */; };
+		FCB7EC45D29CD5FF87D198C0 /* Fuzi-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = AE3BE83B87FCF22B8DF5F235 /* Fuzi-LICENSE.txt */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		8078BEDE6C7FDD01CE9E3D36 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 79EE2534675F5BE85E4834E8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FE4EBC5CE287E431C2539368;
+			remoteInfo = MediaPortal;
+		};
+		C2D2A21E39FFF670A1A52B9A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 79EE2534675F5BE85E4834E8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FE4EBC5CE287E431C2539368;
+			remoteInfo = MediaPortal;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F51650DB01CA5B0D30B0E0FD /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				5D94C02207782090CEC50464 /* TDLib.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		05C320CDD8F0A78B8C6EAC26 /* MediaPortalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPortalApp.swift; sourceTree = "<group>"; };
+		0A4FCFD7F9F5550BFB3034FD /* TelegramLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramLibraryTests.swift; sourceTree = "<group>"; };
+		0C0C81775C4377531EFDD858 /* TelegramSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramSettings.swift; sourceTree = "<group>"; };
+		11A1489D93027B0053952490 /* GCDWebServer-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "GCDWebServer-LICENSE.txt"; sourceTree = "<group>"; };
+		1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTests.swift; sourceTree = "<group>"; };
+		2439FDBF9E91D6D4C472D6B9 /* wordnet.db.gzip */ = {isa = PBXFileReference; path = wordnet.db.gzip; sourceTree = "<group>"; };
+		26F78F97E40AC23598BBA508 /* ReaderTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTools.swift; sourceTree = "<group>"; };
+		384882AE925A7EDC5B6560E9 /* TDLib.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TDLib.xcframework; path = Frameworks/TDLib.xcframework; sourceTree = "<group>"; };
+		3AB6AE8D73CD98CFCF30BCC4 /* TelegramLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramLibrary.swift; sourceTree = "<group>"; };
+		4533A5D53CCBC4294E814700 /* ConnectionPaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPaste.swift; sourceTree = "<group>"; };
+		4D73C185169CC3D8D67442EF /* ListeningProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningProgressTests.swift; sourceTree = "<group>"; };
+		4F2947DAC5BD5505F963F52E /* FixedReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedReader.swift; sourceTree = "<group>"; };
+		509F4FD48B62B72C5FC1118B /* LibrarySort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySort.swift; sourceTree = "<group>"; };
+		57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySortTests.swift; sourceTree = "<group>"; };
+		5F83A0C3A530ADFC97764034 /* NotesExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesExchange.swift; sourceTree = "<group>"; };
+		62EE249E7A949BD3159FA86F /* TDLib.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = TDLib.txt; sourceTree = "<group>"; };
+		6714931500F7EEDAA4CF703C /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
+		69109F4CA1AD44FAAC9DE5B3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		761DC45E4C90A7706EA80DB6 /* TelegramIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramIdentity.swift; sourceTree = "<group>"; };
+		7A744FBDE9CFFC0858114D29 /* MediaPortalTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MediaPortalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DFF22C2BE44CF3C3AB4CC44 /* ZIPFoundation-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "ZIPFoundation-LICENSE.txt"; sourceTree = "<group>"; };
+		905BB87D25B2574FA5C630F3 /* chaptered.m4b */ = {isa = PBXFileReference; path = chaptered.m4b; sourceTree = "<group>"; };
+		91640C7451F72BC9904CF2B8 /* SwiftSoup-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SwiftSoup-LICENSE.txt"; sourceTree = "<group>"; };
+		9548678D7E8A1408523A7ED9 /* TelegramAudioResource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramAudioResource.swift; sourceTree = "<group>"; };
+		97346D65B15BCA7EE0148072 /* KoSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KoSync.swift; sourceTree = "<group>"; };
+		9D3ADCC35432199D67374969 /* comic.cbz */ = {isa = PBXFileReference; path = comic.cbz; sourceTree = "<group>"; };
+		A73C2F173CA6C7CC2ED5FC1F /* PortalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalUITests.swift; sourceTree = "<group>"; };
+		AA8B434B66CD0C5371752AC2 /* CryptoSwift-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CryptoSwift-LICENSE.txt"; sourceTree = "<group>"; };
+		AD923AF716638655F381F404 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
+		ADCEB94A5E74D14B23D808B7 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		AE3BE83B87FCF22B8DF5F235 /* Fuzi-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Fuzi-LICENSE.txt"; sourceTree = "<group>"; };
+		B273C586C172B7E0D5099F62 /* OfflineDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineDictionary.swift; sourceTree = "<group>"; };
+		B2E10CC5C2A587D5C9537184 /* OpenSSL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OpenSSL.txt; sourceTree = "<group>"; };
+		B44A9E49229181F458AF9966 /* MediaPortal.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MediaPortal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C67E1C069799E9CB45A70508 /* DictionaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryTests.swift; sourceTree = "<group>"; };
+		CB0451BFC510AA92C2115B2A /* Zip-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Zip-LICENSE.txt"; sourceTree = "<group>"; };
+		CD06FB4BBD8AC4FFAF1413D0 /* alice.epub */ = {isa = PBXFileReference; path = alice.epub; sourceTree = "<group>"; };
+		CD5502D3D712258950DC7920 /* WordNet-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WordNet-LICENSE.txt"; sourceTree = "<group>"; };
+		D2608ABA4C7803400C56AE5E /* MediaPortalUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MediaPortalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB2A8DDF05DC6352F67F14C1 /* Reader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Reader.swift; sourceTree = "<group>"; };
+		DC8A439BE4A01969E79B8684 /* BookServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookServer.swift; sourceTree = "<group>"; };
+		DDDC886A6E13FA3BC72B2F74 /* ConnectionPasteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPasteTests.swift; sourceTree = "<group>"; };
+		DF3346470DB2B4281F863E24 /* Dictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictionary.swift; sourceTree = "<group>"; };
+		E02ADADE92A0750ED94CF388 /* SQLite.swift-LICENSE.txt.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SQLite.swift-LICENSE.txt.txt"; sourceTree = "<group>"; };
+		EAC7B6653C947D3BEDD87C48 /* PairingConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConfirmation.swift; sourceTree = "<group>"; };
+		ECB230977E565F73D215077A /* swift-toolkit-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "swift-toolkit-LICENSE.txt"; sourceTree = "<group>"; };
+		ECF68075F4BF696D46B1209C /* DifferenceKit-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "DifferenceKit-LICENSE.txt"; sourceTree = "<group>"; };
+		F6021C42519E445CD02873C4 /* sample.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = sample.pdf; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E37B210E159D58DFD70747E7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4DA026DBC36CFA44E183627 /* TDLib.xcframework in Frameworks */,
+				6C845D0AD8A2D4B160BFACE5 /* ReadiumZIPFoundation in Frameworks */,
+				361D5451189775E808EF467A /* ReadiumShared in Frameworks */,
+				8B1A5BE6C8AC15EEA7BB0367 /* ReadiumStreamer in Frameworks */,
+				039BFC487FEDB4A9DB00EBEC /* ReadiumNavigator in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E7DFED7EAAA421036BFE751C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				68FF85E75E98EE46F5F7AD81 /* TDLib.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1F136375FDD3EBA39F046017 = {
+			isa = PBXGroup;
+			children = (
+				D6391E3C5FF991615376EE04 /* assets */,
+				D814585FCBDE94E715E8AC37 /* Resources */,
+				8300928D49AACAD29C849C70 /* Sources */,
+				20F523161BF5897A1E127148 /* Tests */,
+				BBB7F7B619F9581202F201B9 /* UITests */,
+				AABE1115DD880901E07A73D9 /* Frameworks */,
+				E9E80F87B0579AE2E5485A0B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		20F523161BF5897A1E127148 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				DDDC886A6E13FA3BC72B2F74 /* ConnectionPasteTests.swift */,
+				C67E1C069799E9CB45A70508 /* DictionaryTests.swift */,
+				57F17E6F04C5D36FD7C79B22 /* LibrarySortTests.swift */,
+				1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */,
+				4D73C185169CC3D8D67442EF /* ListeningProgressTests.swift */,
+				0A4FCFD7F9F5550BFB3034FD /* TelegramLibraryTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		2E990821BCAD0D87B92B840C /* dictionary */ = {
+			isa = PBXGroup;
+			children = (
+				CD5502D3D712258950DC7920 /* WordNet-LICENSE.txt */,
+				2439FDBF9E91D6D4C472D6B9 /* wordnet.db.gzip */,
+			);
+			path = dictionary;
+			sourceTree = "<group>";
+		};
+		8300928D49AACAD29C849C70 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				AD923AF716638655F381F404 /* AudioPlayer.swift */,
+				DC8A439BE4A01969E79B8684 /* BookServer.swift */,
+				4533A5D53CCBC4294E814700 /* ConnectionPaste.swift */,
+				DF3346470DB2B4281F863E24 /* Dictionary.swift */,
+				6714931500F7EEDAA4CF703C /* Discovery.swift */,
+				4F2947DAC5BD5505F963F52E /* FixedReader.swift */,
+				97346D65B15BCA7EE0148072 /* KoSync.swift */,
+				ADCEB94A5E74D14B23D808B7 /* Library.swift */,
+				509F4FD48B62B72C5FC1118B /* LibrarySort.swift */,
+				05C320CDD8F0A78B8C6EAC26 /* MediaPortalApp.swift */,
+				5F83A0C3A530ADFC97764034 /* NotesExchange.swift */,
+				B273C586C172B7E0D5099F62 /* OfflineDictionary.swift */,
+				EAC7B6653C947D3BEDD87C48 /* PairingConfirmation.swift */,
+				DB2A8DDF05DC6352F67F14C1 /* Reader.swift */,
+				26F78F97E40AC23598BBA508 /* ReaderTools.swift */,
+				9548678D7E8A1408523A7ED9 /* TelegramAudioResource.swift */,
+				761DC45E4C90A7706EA80DB6 /* TelegramIdentity.swift */,
+				3AB6AE8D73CD98CFCF30BCC4 /* TelegramLibrary.swift */,
+				0C0C81775C4377531EFDD858 /* TelegramSettings.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		AABE1115DD880901E07A73D9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				384882AE925A7EDC5B6560E9 /* TDLib.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BBB7F7B619F9581202F201B9 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				A73C2F173CA6C7CC2ED5FC1F /* PortalUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		D6391E3C5FF991615376EE04 /* assets */ = {
+			isa = PBXGroup;
+			children = (
+				CD06FB4BBD8AC4FFAF1413D0 /* alice.epub */,
+				905BB87D25B2574FA5C630F3 /* chaptered.m4b */,
+				9D3ADCC35432199D67374969 /* comic.cbz */,
+				F6021C42519E445CD02873C4 /* sample.pdf */,
+			);
+			name = assets;
+			path = ../app/src/androidTest/assets;
+			sourceTree = "<group>";
+		};
+		D756899D9B9A03F935D64289 /* Licenses */ = {
+			isa = PBXGroup;
+			children = (
+				AA8B434B66CD0C5371752AC2 /* CryptoSwift-LICENSE.txt */,
+				ECF68075F4BF696D46B1209C /* DifferenceKit-LICENSE.txt */,
+				AE3BE83B87FCF22B8DF5F235 /* Fuzi-LICENSE.txt */,
+				11A1489D93027B0053952490 /* GCDWebServer-LICENSE.txt */,
+				B2E10CC5C2A587D5C9537184 /* OpenSSL.txt */,
+				E02ADADE92A0750ED94CF388 /* SQLite.swift-LICENSE.txt.txt */,
+				ECB230977E565F73D215077A /* swift-toolkit-LICENSE.txt */,
+				91640C7451F72BC9904CF2B8 /* SwiftSoup-LICENSE.txt */,
+				62EE249E7A949BD3159FA86F /* TDLib.txt */,
+				CB0451BFC510AA92C2115B2A /* Zip-LICENSE.txt */,
+				7DFF22C2BE44CF3C3AB4CC44 /* ZIPFoundation-LICENSE.txt */,
+			);
+			path = Licenses;
+			sourceTree = "<group>";
+		};
+		D814585FCBDE94E715E8AC37 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				69109F4CA1AD44FAAC9DE5B3 /* Assets.xcassets */,
+				2E990821BCAD0D87B92B840C /* dictionary */,
+				D756899D9B9A03F935D64289 /* Licenses */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		E9E80F87B0579AE2E5485A0B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B44A9E49229181F458AF9966 /* MediaPortal.app */,
+				7A744FBDE9CFFC0858114D29 /* MediaPortalTests.xctest */,
+				D2608ABA4C7803400C56AE5E /* MediaPortalUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BFE39BD863B60CFA91DF0F1C /* MediaPortalTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1599940E8DC7CF251F75090C /* Build configuration list for PBXNativeTarget "MediaPortalTests" */;
+			buildPhases = (
+				39708DDD1E5936C65921BCEB /* Sources */,
+				9FE39999EDDBAC5655A38FE5 /* Resources */,
+				E7DFED7EAAA421036BFE751C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				152F9C7B4E873E1BA13F3FCE /* PBXTargetDependency */,
+			);
+			name = MediaPortalTests;
+			packageProductDependencies = (
+			);
+			productName = MediaPortalTests;
+			productReference = 7A744FBDE9CFFC0858114D29 /* MediaPortalTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		DCDACC1285B0FD95DB9F87BD /* MediaPortalUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 935CF5500F0918F793A77942 /* Build configuration list for PBXNativeTarget "MediaPortalUITests" */;
+			buildPhases = (
+				7A024BD8EF4FD8DF8C499173 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F7FA868E8D13367C41FDC7BE /* PBXTargetDependency */,
+			);
+			name = MediaPortalUITests;
+			packageProductDependencies = (
+			);
+			productName = MediaPortalUITests;
+			productReference = D2608ABA4C7803400C56AE5E /* MediaPortalUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		FE4EBC5CE287E431C2539368 /* MediaPortal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1ABC79C72C4A3C51302A892E /* Build configuration list for PBXNativeTarget "MediaPortal" */;
+			buildPhases = (
+				AE4310087744730FF80CE117 /* Sources */,
+				41DE5B100E09A385DE3D3769 /* Resources */,
+				E37B210E159D58DFD70747E7 /* Frameworks */,
+				F51650DB01CA5B0D30B0E0FD /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MediaPortal;
+			packageProductDependencies = (
+				93F43F7FE6CB6C44024FA06C /* ReadiumZIPFoundation */,
+				F196922E5C0E8249DB40DF9E /* ReadiumShared */,
+				7526DF77D019E0C6B79F452C /* ReadiumStreamer */,
+				F79CAED253E3CB7527FD4CA7 /* ReadiumNavigator */,
+			);
+			productName = MediaPortal;
+			productReference = B44A9E49229181F458AF9966 /* MediaPortal.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		79EE2534675F5BE85E4834E8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					DCDACC1285B0FD95DB9F87BD = {
+						TestTargetID = FE4EBC5CE287E431C2539368;
+					};
+				};
+			};
+			buildConfigurationList = C59532F3ABACCF1746E8ED7C /* Build configuration list for PBXProject "MediaPortal" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1F136375FDD3EBA39F046017;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2F9334ABA024FE8813D5E84B /* XCRemoteSwiftPackageReference "swift-toolkit" */,
+				EA590CE732C2E9399AC53432 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E9E80F87B0579AE2E5485A0B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FE4EBC5CE287E431C2539368 /* MediaPortal */,
+				BFE39BD863B60CFA91DF0F1C /* MediaPortalTests */,
+				DCDACC1285B0FD95DB9F87BD /* MediaPortalUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		41DE5B100E09A385DE3D3769 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2B2C1145E79AC1B4F037A973 /* Assets.xcassets in Resources */,
+				37B60BF8D936F7B86C8D8140 /* CryptoSwift-LICENSE.txt in Resources */,
+				A8EEC5A19822A5599FBC9129 /* DifferenceKit-LICENSE.txt in Resources */,
+				FCB7EC45D29CD5FF87D198C0 /* Fuzi-LICENSE.txt in Resources */,
+				66E6E724302561871DCB4D6D /* GCDWebServer-LICENSE.txt in Resources */,
+				68D79A6ACE746D8EA6876267 /* OpenSSL.txt in Resources */,
+				F9C99C661247F3EBBDC26D56 /* SQLite.swift-LICENSE.txt.txt in Resources */,
+				4079D8D6C04AF41FA355DD84 /* SwiftSoup-LICENSE.txt in Resources */,
+				186B77F45187B742E2963F92 /* TDLib.txt in Resources */,
+				E8A46E191A9A57D1C19C39B4 /* WordNet-LICENSE.txt in Resources */,
+				018D75B39D8CCB9F62CA99A1 /* ZIPFoundation-LICENSE.txt in Resources */,
+				0C5E1B81EA8206770FC6668D /* Zip-LICENSE.txt in Resources */,
+				000CCC7A36D498066857629C /* swift-toolkit-LICENSE.txt in Resources */,
+				80C317A8E07B45639697110D /* wordnet.db.gzip in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9FE39999EDDBAC5655A38FE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				14A8EB6A8A449CD6892E0B08 /* alice.epub in Resources */,
+				F082EC7CC2E221846FDD9617 /* chaptered.m4b in Resources */,
+				76D5FA6C1C48C2D87B99A168 /* comic.cbz in Resources */,
+				DA6579ABAFE85B9176028BE8 /* sample.pdf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		39708DDD1E5936C65921BCEB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5F5046493E11785CD18A76BC /* ConnectionPasteTests.swift in Sources */,
+				A7FA0EB2A36D534456A55DC3 /* DictionaryTests.swift in Sources */,
+				C66DF317D708E54744A04A59 /* LibrarySortTests.swift in Sources */,
+				B21A48D3E75BA4FF27380185 /* LibraryTests.swift in Sources */,
+				5E531401C57E85331494029B /* ListeningProgressTests.swift in Sources */,
+				82A42F6E6D27287BF34217CD /* TelegramLibraryTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A024BD8EF4FD8DF8C499173 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9A94C30B618580A35170A375 /* PortalUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AE4310087744730FF80CE117 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				64F7E05254D1051AFD8A85FD /* AudioPlayer.swift in Sources */,
+				5481FC0E095A81EABE139F6C /* BookServer.swift in Sources */,
+				CE02FE53A070244C72E240F8 /* ConnectionPaste.swift in Sources */,
+				5A577196763A832954A216F8 /* Dictionary.swift in Sources */,
+				C0A6F4CD11D3C28D893989B0 /* Discovery.swift in Sources */,
+				5F4C98D07D7EE1C2F33A588B /* FixedReader.swift in Sources */,
+				E6F81FE16D241A2E1A707C3A /* KoSync.swift in Sources */,
+				371AF8386B77F660F39012CD /* Library.swift in Sources */,
+				38ACEDFEED141DC4452CE61F /* LibrarySort.swift in Sources */,
+				29FBDDA9A04FDCA43AC39009 /* MediaPortalApp.swift in Sources */,
+				22682BB7759F4BDC21427C05 /* NotesExchange.swift in Sources */,
+				A4BDEFD178555A820715E6B9 /* OfflineDictionary.swift in Sources */,
+				2E7502CA5CB85B56CBF182A4 /* PairingConfirmation.swift in Sources */,
+				D23C82109F0E07288C2B616D /* Reader.swift in Sources */,
+				BBE24CC51FD6BD3B410002ED /* ReaderTools.swift in Sources */,
+				58946D866A85E176149A6548 /* TelegramAudioResource.swift in Sources */,
+				3C2D4AA15A086AA70914E523 /* TelegramIdentity.swift in Sources */,
+				6A7282C101BD93E445BA446B /* TelegramLibrary.swift in Sources */,
+				39D61A9B21246A9148C454FA /* TelegramSettings.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		152F9C7B4E873E1BA13F3FCE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FE4EBC5CE287E431C2539368 /* MediaPortal */;
+			targetProxy = C2D2A21E39FFF670A1A52B9A /* PBXContainerItemProxy */;
+		};
+		F7FA868E8D13367C41FDC7BE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FE4EBC5CE287E431C2539368 /* MediaPortal */;
+			targetProxy = 8078BEDE6C7FDD01CE9E3D36 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1669A0C463C9852288A692BA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.natan.MediaPortalUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MediaPortal;
+			};
+			name = Debug;
+		};
+		1B1C866B087F80BC277715A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.natan.mediaportal;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6202C823A59771FEEAC61E33 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 14;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.9.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		680BB215D2FFFE07CF96DF5C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 14;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.9.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		70885740E2D294183820EB32 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.natan.MediaPortalTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MediaPortal.app/MediaPortal";
+			};
+			name = Debug;
+		};
+		D866199859EC2B0E44ECFEBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.natan.mediaportal;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DBD65B0118C78DFA042B42C5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Frameworks\"",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.natan.MediaPortalTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MediaPortal.app/MediaPortal";
+			};
+			name = Release;
+		};
+		FCF6E308C82BF8CB77733CD1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.natan.MediaPortalUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MediaPortal;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1599940E8DC7CF251F75090C /* Build configuration list for PBXNativeTarget "MediaPortalTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				70885740E2D294183820EB32 /* Debug */,
+				DBD65B0118C78DFA042B42C5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1ABC79C72C4A3C51302A892E /* Build configuration list for PBXNativeTarget "MediaPortal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D866199859EC2B0E44ECFEBB /* Debug */,
+				1B1C866B087F80BC277715A9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		935CF5500F0918F793A77942 /* Build configuration list for PBXNativeTarget "MediaPortalUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1669A0C463C9852288A692BA /* Debug */,
+				FCF6E308C82BF8CB77733CD1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C59532F3ABACCF1746E8ED7C /* Build configuration list for PBXProject "MediaPortal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6202C823A59771FEEAC61E33 /* Debug */,
+				680BB215D2FFFE07CF96DF5C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2F9334ABA024FE8813D5E84B /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.8.0;
+			};
+		};
+		EA590CE732C2E9399AC53432 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/readium/ZIPFoundation.git";
+			requirement = {
+				kind = exactVersion;
+				version = 3.0.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7526DF77D019E0C6B79F452C /* ReadiumStreamer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F9334ABA024FE8813D5E84B /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumStreamer;
+		};
+		93F43F7FE6CB6C44024FA06C /* ReadiumZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EA590CE732C2E9399AC53432 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ReadiumZIPFoundation;
+		};
+		F196922E5C0E8249DB40DF9E /* ReadiumShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F9334ABA024FE8813D5E84B /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumShared;
+		};
+		F79CAED253E3CB7527FD4CA7 /* ReadiumNavigator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F9334ABA024FE8813D5E84B /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumNavigator;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 79EE2534675F5BE85E4834E8 /* Project object */;
+}

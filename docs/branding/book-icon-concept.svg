@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Book app icon concept</title>
+  <rect width="512" height="512" rx="112" fill="#0B1116"/>
+  <g transform="translate(51.2 35.84) scale(.8)">
+    <path fill="#58DCCB" d="M96 128c57-10 104 4 148 36v224c-44-32-91-46-148-36V128Zm320 0c-57-10-104 4-148 36v224c44-32 91-46 148-36V128Z"/>
+    <path stroke="#58DCCB" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" d="M64 160v222c73-13 127 0 192 38 65-38 119-51 192-38V160"/>
+  </g>
+</svg>

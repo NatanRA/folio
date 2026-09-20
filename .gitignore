@@ -1,0 +1,16 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.jks
+*.keystore
+.DS_Store
+app/src/main/assets/telegram-private.json
+app/src/main/jniLibs/
+ios/Resources/telegram-private.json
+ios/Frameworks/TDLib.xcframework/
+dist/
+**/xcuserdata/
+**/*.xcuserstate
+__pycache__/
+*.pyc
