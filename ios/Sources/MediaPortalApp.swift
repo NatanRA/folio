@@ -9,12 +9,13 @@ let ebookTypes: [UTType] = [UTType(filenameExtension: "epub")!, .pdf, UTType(fil
     @StateObject var server = BookServer()
     @StateObject var audio = AudioPlayer()
     @StateObject var sync = KoSync()
+    @State private var navigation: FolioNavigation?
     @AppStorage("appearance") var appearance = "System"
     @AppStorage("accent") var accent = "Aquamarine"
     @Environment(\.scenePhase) var phase
     var body: some Scene {
         WindowGroup {
-            PortalHome().environmentObject(library).environmentObject(server).environmentObject(audio).environmentObject(sync)
+            PortalHome(navigation: navigation).environmentObject(library).environmentObject(server).environmentObject(audio).environmentObject(sync)
                 .tint(portalAccent(accent))
                 .onChange(of: appearance, initial: true) { _, _ in applyWindowScheme(appearance) }
                 // Coming to the front is when a device first has a chance to learn where the reader
@@ -24,6 +25,11 @@ let ebookTypes: [UTType] = [UTType(filenameExtension: "epub")!, .pdf, UTType(fil
                 }
                 .task { TelegramLibrary.shared.library = library; if TelegramLibrary.shared.configured { TelegramLibrary.shared.start() } }
                 .onOpenURL { url in
+                    // Invalid navigation links must never fall through to file import.
+                    if url.scheme == "folio" {
+                        if let destination = FolioNavigation(url: url) { navigation = destination }
+                        return
+                    }
                     // A pairing link asks to connect a library; it is not a book to import.
                     if let pairing = PastedConnection(pairingLink: url) { server.pendingPairing = pairing; return }
                     Task {
@@ -86,6 +92,7 @@ struct BookCover: View {
 }
 
 struct PortalHome: View {
+    var navigation: FolioNavigation? = nil
     @AppStorage("accent") private var brandAccent = "Aquamarine"
     @AppStorage("library.sort") private var sortName = LibrarySort.title.rawValue
     @EnvironmentObject var library: Library
@@ -111,6 +118,18 @@ struct PortalHome: View {
             catalogue(home: false, downloads: false).tabItem { Label("Library", systemImage: "books.vertical") }.tag(1)
             catalogue(home: false, downloads: true).tabItem { Label("Downloads", systemImage: "arrow.down.circle") }.tag(2)
             NavigationStack { ServerScreen(onSearch: openSearch) }.tabItem { Label("Server", systemImage: "externaldrive") }.tag(3)
+        }
+        .id(navigation?.id)
+        .onChange(of: navigation?.id, initial: true) { _, _ in
+            guard let navigation else { return }
+            tab = navigation.tab
+            search = navigation.query ?? ""
+            searching = navigation.query != nil
+            freeBooks = false
+            searchFocused = false
+            pushedBook = nil
+            appearance = false
+            importChoice = false
         }
         .blur(radius: searching ? 22 : 0)
         .animation(.easeOut(duration: 0.28), value: searching)

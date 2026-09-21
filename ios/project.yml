@@ -31,6 +31,8 @@ targets:
         UIBackgroundModes: [audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
+          - CFBundleURLName: com.natan.mediaportal.navigation
+            CFBundleURLSchemes: [folio]
           - CFBundleURLName: com.natan.mediaportal.pairing
             CFBundleURLSchemes: [folio-pair]
         LSSupportsOpeningDocumentsInPlace: true

@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private var error by mutableStateOf<String?>(null)
     /** A scanned pairing link waiting for the reader to confirm it. */
     private var pendingPairing by mutableStateOf<PairingLink?>(null)
+    private var pendingNavigation by mutableStateOf<FolioNavigation?>(null)
     private var connected by mutableStateOf(false)
     private var progressVersion by mutableIntStateOf(0)
     private var audioImport = false
@@ -159,11 +160,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        FolioNavigation.from(intent.data?.toString())?.let { pendingNavigation = it; return }
         PairingLink.from(intent.data?.toString())?.let { pendingPairing = it }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingPairing = PairingLink.from(intent?.data?.toString())
+        pendingNavigation = FolioNavigation.from(intent?.data?.toString())
         artworkTarget = savedInstanceState?.getString("artworkTarget")
         linkTo = savedInstanceState?.getString("importLink")
         audioImport = savedInstanceState?.getBoolean("audioImport") ?: false
@@ -192,6 +195,20 @@ class MainActivity : ComponentActivity() {
                 var sortMenu by remember { mutableStateOf(false) }
                 fun closeSearch() { searching = false; query = ""; freeBooks = false; focus.clearFocus() }
                 var listening by remember(homeReturn) { mutableStateOf<Title?>(if (homeReturn == 0 && intent.getBooleanExtra("openAudio", false)) local.find { it.id == getSharedPreferences("progress", MODE_PRIVATE).getString("activeAudio", null) } else null) }
+                LaunchedEffect(pendingNavigation) {
+                    val destination = pendingNavigation ?: return@LaunchedEffect
+                    selected = null
+                    listening = null
+                    appearanceOpen = false
+                    addMenu = false
+                    closeSearch()
+                    tab = destination.tab
+                    if (destination.query != null) {
+                        query = destination.query
+                        searching = true
+                    }
+                    pendingNavigation = null
+                }
                 val titles = remote.map { book -> local.find { it.id == book.id } ?: book } + local.filter { book -> remote.none { it.id == book.id } }
                 BackHandler(searching || selected != null || listening != null || tab != 0) { if (searching) closeSearch() else if (listening != null) listening = null else if (selected != null) selected = null else tab = 0 }
                 val hazeState = remember { HazeState() }

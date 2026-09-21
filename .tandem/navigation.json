@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "app": { "id": "folio", "name": "Folio" },
+  "destinations": [
+    {
+      "id": "open-screen",
+      "description": "Open a main Folio screen: Home, Library, Downloads or Server settings.",
+      "urls": { "ios": "folio://navigate", "android": "folio://navigate" },
+      "parameters": {
+        "screen": { "type": "string", "query": "screen", "required": true, "description": "The main screen to open.", "enum": ["home", "library", "downloads", "server"] }
+      },
+      "verification": "The requested tab is selected and its content is visible. Server opens settings only; it does not connect or change credentials."
+    },
+    {
+      "id": "search-library",
+      "description": "Search the current Folio library by book title or author. Does not search Free books, download, open a book or start playback.",
+      "urls": { "ios": "folio://navigate?screen=library", "android": "folio://navigate?screen=library" },
+      "parameters": {
+        "query": { "type": "string", "query": "q", "required": true, "description": "Title or author text, for example Alice." }
+      },
+      "verification": "The library search shows the requested query and matching titles, or an explicit no-matches message."
+    }
+  ]
+}

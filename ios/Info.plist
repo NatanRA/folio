@@ -38,6 +38,14 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
+			<string>com.natan.mediaportal.navigation</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>folio</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
 			<string>com.natan.mediaportal.pairing</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
