@@ -30,12 +30,36 @@ This is a native port, not a Kotlin wrapper. It uses iOS page transitions instea
 
 ## Build
 
-Requires Xcode 26.6 (tested), XcodeGen, and iOS 17 or newer. No signing keys or Apple credentials are included.
+Requires Xcode (tested with 26.6 and 27.0), XcodeGen, CMake, Ninja, gperf, Homebrew OpenSSL 3,
+and iOS 17 or newer. No signing keys or Apple credentials are included.
+
+**On a fresh checkout, build and package TDLib first.** Its generated XCFramework
+is ignored by Git; Xcode and Tandem's simulator cannot build the app without it.
+Run these commands sequentially from the repository root (the initial source
+build takes time; subsequent builds reuse the ignored `build/` workspace):
+
+```sh
+bash scripts/build-telegram-native.sh "$PWD/build/telegram-native" simulator
+bash scripts/build-telegram-native.sh "$PWD/build/telegram-native" ios
+python3 scripts/package-telegram-native.py "$PWD/build/telegram-native" --platform ios
+```
+
+This produces `ios/Frameworks/TDLib.xcframework` with arm64 device and simulator
+slices, without requiring the Android SDK or NDK. Intel simulators are not
+supported. See [Telegram native builds](../docs/telegram-library.md#native-builds)
+for the pinned dependency versions and combined Android/iOS setup.
+
+Then build below, or use **Rebuild** in Tandem's iOS simulator panel.
+If an earlier build failed with "There is no XCFramework found" and the error
+persists after packaging, clean that build's Xcode build folder first. When
+running `xcodebuild clean`, use the same project, scheme and `-derivedDataPath`
+as the failing build; cleaning a different DerivedData folder will not reset
+its cached missing-framework error.
 
 ```sh
 xcodegen generate --spec ios/project.yml
 xcodebuild -project ios/MediaPortal.xcodeproj -scheme MediaPortal \
-  -destination 'generic/platform=iOS Simulator' build
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 build
 ```
 
 Run `xcodebuild test` with a booted iPhone simulator destination. Unit tests cover real EPUB/audio import, paired media persistence, reader construction, playback resume and OPDS origin checks. UI tests exercise native navigation, appearance and server forms.
