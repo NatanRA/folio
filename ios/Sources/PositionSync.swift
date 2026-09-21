@@ -43,17 +43,33 @@ enum PositionProtocol {
 
     static func date(_ modified: Int64) -> Date { Date(timeIntervalSince1970: Double(max(0, modified)) / 1000) }
 
-    /// Every book this device has a listening position for. One saved before this device tracked a
-    /// write time still travels, stamped zero, so it can seed a key no device knows yet without
-    /// ever beating a dated position from the other device.
+    /// The time to write for a move this device just made, never earlier than the one already
+    /// stored for that book. The wall clock goes backwards — an NTP correction, a date changed by
+    /// hand, a battery pulled — and every write after that would be dated before this device's own
+    /// earlier work: it would lose every merge against itself and keep pulling the older position
+    /// back in. Only a device's own stamps are kept monotonic; a record arriving carries its own
+    /// time, which is the whole basis of the comparison.
+    static func stamped(_ stored: Date?, now: Date = Date()) -> Date { max(now, stored ?? .distantPast) }
+
+    /// What this device has to offer for one book, or nothing when it has never written a position
+    /// for it. The write time is the whole measure of a book at both ends of the exchange: one the
+    /// upgrade could not date holds nothing this device can vouch for, so it neither travels nor
+    /// stands in the way of what arrives. A record stamped zero could never be applied by anyone
+    /// anyway, and would only take up one of the rows the service holds.
+    static func offer(_ book: MediaBook) -> PositionRecord? {
+        let modified = stamp(book.audioModifiedAt)
+        guard modified > 0 else { return nil }
+        return PositionRecord(key: book.id, position: milliseconds(book.audioPosition),
+                              duration: milliseconds(book.audioDuration ?? 0), modified: modified)
+    }
+
+    /// Every book this device holds a listening position worth offering for.
     static func records(_ books: [MediaBook]) -> [PositionRecord] {
-        books.filter { syncable($0) && ($0.audioModifiedAt != nil || $0.audioPosition > 0) }
-            .prefix(maximumRecords)
-            .map { PositionRecord(key: $0.id, position: milliseconds($0.audioPosition), duration: milliseconds($0.audioDuration ?? 0), modified: stamp($0.audioModifiedAt)) }
+        Array(books.filter(syncable).compactMap(offer).prefix(maximumRecords))
     }
 
     /// The records worth taking: written on another device after this one last wrote that book, and
-    /// never the book loaded in the player here, whose listener would be yanked mid-sentence.
+    /// never the book being listened to here, whose listener would be yanked mid-sentence.
     static func applicable(_ records: [PositionRecord], to books: [MediaBook], playing: String?) -> [PositionRecord] {
         var known: [String: MediaBook] = [:]
         for book in books where syncable(book) { known[book.id] = book }
@@ -71,7 +87,9 @@ enum PositionProtocol {
         book.audioPosition = seconds(record.position)
         if record.duration > 0 { book.audioDuration = seconds(record.duration) }
         book.audioModifiedAt = date(record.modified)
-        book.lastOpenedAt = date(record.modified)
+        // Forwards only: a record older than the last time this device opened the title would
+        // demote it on Home and hand Continue a book the reader left far longer ago.
+        book.lastOpenedAt = max(book.lastOpenedAt ?? .distantPast, date(record.modified))
     }
 }
 
@@ -82,10 +100,17 @@ enum PositionProtocol {
 /// nothing, changes no saved position, and simply waits for the next trigger.
 @MainActor final class PositionSync {
     static let shared = PositionSync()
-    /// The book loaded in the player on this device, which a pulled record must never overwrite.
-    var playing: String?
+    /// The player on this device, read for the book it is actually playing and moved when a
+    /// position arrives for the book it is holding paused.
+    weak var player: AudioPlayer?
     private var last = Date.distantPast
     private var running = false
+    private var pending = false
+
+    /// The book being listened to here, which a pulled record must never overwrite. A book merely
+    /// loaded does not count: the player keeps it through a pause so the mini player survives, and
+    /// excluding it for good would withhold the one book the reader most wants carried across.
+    private var activeBook: String? { player?.playing == true ? player?.bookID : nil }
 
     private var account: ServerAccount? {
         SecureStore.read("notes-sync").flatMap { try? JSONDecoder().decode(ServerAccount.self, from: $0) }
@@ -95,14 +120,28 @@ enum PositionProtocol {
     /// turns that into traffic; pause, stop and backgrounding go through `exchange` instead.
     func pushWhileListening(library: Library) {
         guard Date().timeIntervalSince(last) >= 30 else { return }
-        exchange(library: library)
+        // Dropped rather than queued when one is already in flight: the next save is half a second
+        // away and the one after that thirty seconds later, so re-queueing every push an exchange
+        // outlived would have the two chase each other for the rest of the session.
+        exchange(library: library, queueIfBusy: false)
     }
 
-    func exchange(library: Library) {
-        guard !running, let account else { return }
-        running = true; last = Date()
+    /// `queueIfBusy` says whether this call is the only chance its moment offers. The pull after a
+    /// Telegram scan, a pause and coming to the front are each that, and the scan's pull is as
+    /// likely as not to collide with the one the launch already started — losing it is exactly the
+    /// case where a freshly set up device shows no Continue card. Playback's throttled push is not.
+    func exchange(library: Library, queueIfBusy: Bool = true) {
+        guard !running else { if queueIfBusy { pending = true }; return }
+        // The clock moves before the account is read: with none saved there is nothing to read it
+        // for, and playback would otherwise ask the Keychain twice a second all session long.
+        last = Date()
+        guard let account else { return }
+        running = true
         Task {
-            defer { running = false }
+            defer {
+                running = false
+                if pending { pending = false; exchange(library: library) }
+            }
             await run(account: account, library: library)
         }
     }
@@ -122,8 +161,13 @@ enum PositionProtocol {
               let data = try? Data(contentsOf: file),
               let merged = try? JSONDecoder().decode(PositionBundle.self, from: data), merged.version == 1,
               merged.records.count <= PositionProtocol.maximumRecords else { return }
-        for record in PositionProtocol.applicable(merged.records, to: library.books, playing: playing) {
+        for record in PositionProtocol.applicable(merged.records, to: library.books, playing: activeBook) {
             library.update(record.key) { PositionProtocol.apply(record, to: &$0) }
+            // The player keeps its own copy of the position of the book it holds paused, and would
+            // write that stale one back over what has just arrived on its next save. Moving it
+            // there is not this device writing a position: the record already carries its own time,
+            // and clamping it to a length measured here is no reason to claim a newer one.
+            if record.key == player?.bookID { player?.seek(PositionProtocol.seconds(record.position), moved: false) }
         }
     }
 }

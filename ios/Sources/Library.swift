@@ -99,6 +99,7 @@ func readPickedFile<T>(_ url: URL, _ body: @escaping @Sendable (URL) throws -> T
             let index = self.root.appendingPathComponent("library.json")
             if FileManager.default.fileExists(atPath: index.path) { books = try JSONDecoder().decode([MediaBook].self, from: Data(contentsOf: index)) }
             backfillAddedDates()
+            backfillAudioStamps()
         } catch { self.error = "Could not load the saved library: \(error.localizedDescription)" }
     }
     func file(_ name: String) -> URL { root.appendingPathComponent(name) }
@@ -110,6 +111,20 @@ func readPickedFile<T>(_ url: URL, _ body: @escaping @Sendable (URL) throws -> T
                 return values?.creationDate ?? values?.contentModificationDate
             }.min()
         }
+    }
+    /// A listening position saved before this device stamped its writes carries no time of its own,
+    /// and position sync weighs a book by that stamp alone at both ends. Every save has dated the
+    /// title for many releases, so at the upgrade that date stands in for the write time the
+    /// position lacks — once, hence the marker. Reading the date at every exchange instead would
+    /// let merely opening a title restamp a position nobody moved, and rewind the other device.
+    private func backfillAudioStamps() {
+        let marker = file("positions.migrated")
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        for i in books.indices where books[i].audioModifiedAt == nil && books[i].audioPosition > 0 {
+            books[i].audioModifiedAt = books[i].lastOpenedAt
+        }
+        // Only once the stamps are on disk, or a launch that never saved would lose them silently.
+        do { try save(); try Data().write(to: marker, options: .atomic) } catch { }
     }
     func book(_ id: String) -> MediaBook? { books.first { $0.id == id } }
     func save() throws { try JSONEncoder().encode(books).write(to: file("library.json"), options: .atomic) }

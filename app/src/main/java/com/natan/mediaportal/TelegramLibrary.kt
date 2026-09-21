@@ -256,13 +256,22 @@ class TelegramLibrary private constructor(private val context: Context) {
     suspend fun select(id: Long) {
         artworkJob?.cancelAndJoin(); artworkTries.clear(); artworkDone.clear()
         chat = id; cursor = 0; entries.value = emptyList(); more.value = false; scanning.value = true
+        var read = false
         try {
             selectedName.value = chatTitle(id)
             prefs.edit().putLong("selected:$account", id).apply()
-            loadMore()
+            loadMore(); read = true
             var previous = 0L
             while (chat == id && more.value && cursor != previous) { previous = cursor; loadMore() }
-        } finally { if (chat == id) scanning.value = false }
+        } finally {
+            if (chat == id) scanning.value = false
+            // A device set up after the listening began only learns the book exists here, which is
+            // the first moment a position kept for it elsewhere can be applied. Once the whole chat
+            // has been read, not once a page: a long chat would otherwise post twenty times over a
+            // library that is still filling. A later page throwing still leaves the books the pages
+            // before it added, and those are exactly the ones a new device is waiting on.
+            if (read) PositionSync.schedule(context, immediate = true)
+        }
     }
     suspend fun refresh() { if (chat == 0L) selectSaved() else open(chat) }
     suspend fun loadMore() {
@@ -275,15 +284,11 @@ class TelegramLibrary private constructor(private val context: Context) {
         entries.value = (entries.value + (0 until messages.length()).mapNotNull { TelegramFile.parse(messages.getJSONObject(it)) }).distinctBy { it.key }
         val store = LibraryStore(context)
         val catalog = store.all().toMutableList()
-        val before = catalog.size
         entries.value.filter { it.audio }.forEach { entry ->
             val source = "$account:${entry.key}"
             if (catalog.none { it.telegramSource == source }) catalog.add(Title("tg-$account-${entry.chat}-${entry.message}", entry.title.ifBlank { entry.name.substringBeforeLast('.').replace('_', ' ') }, author = entry.performer, audio = "telegram://$account/${entry.chat}/${entry.message}/${Uri.encode(entry.name)}", telegramSource = source, addedAt = System.currentTimeMillis()))
         }
         store.save(catalog); revision.value++
-        // A device set up after the listening began only learns the book exists here, which is the
-        // first moment a position kept for it elsewhere can be applied.
-        if (catalog.size != before) PositionSync.schedule(context, immediate = true)
         loadArtwork()
     }
     private fun artworkWaiting(entry: TelegramFile) = entry.audio && entry.key !in artworkDone && (artworkTries[entry.key] ?: 0) < ARTWORK_TRIES

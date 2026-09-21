@@ -52,9 +52,13 @@ equal-time tie takes the further `position` so a replayed push can never rewind 
 Maximum 5,000 books / 8 MB.
 
 `key` is the book's id, which only Telegram-sourced audiobooks share across devices: it is
-`tg-<telegram account>-<chat>-<message>`, derived identically on Android and iOS. BookLore books
-get a different id on each platform and locally imported files get a random one, so neither is
-sent. BookLore titles are e-books here in any case — the OPDS catalogue carries no audio.
+`tg-<telegram account>-<chat>-<message>`, derived identically on Android and iOS.
+
+Nothing else is sent, because nothing else has an id both devices agree on. A catalogue audiobook
+is named by `UUID.nameUUIDFromBytes` on Android and by SHA-256 on iOS, so the same book arrives
+under two different ids and would sync into thin air; a locally imported file gets a fresh random
+id on each device. Giving catalogue books one shared identity would let them sync too, and is the
+obvious next step now that the OPDS parser reads audio editions.
 
 Positions are deliberately kept out of the annotations table: they are per library, not per book
 file, and unlike a highlight they are worth nothing once superseded.

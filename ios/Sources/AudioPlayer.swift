@@ -9,7 +9,7 @@ struct AudioChapter: Identifiable {
 }
 
 @MainActor final class AudioPlayer: ObservableObject {
-    @Published var bookID: String? { didSet { PositionSync.shared.playing = bookID } }
+    @Published var bookID: String?
     @Published var playing = false
     /// Where playback is, updated twice a second. It isn't published: every screen watches this player, and redrawing
     /// them all twice a second stalled the main thread for tens of milliseconds each time, which showed as stutter in
@@ -110,23 +110,11 @@ struct AudioChapter: Identifiable {
         return max(0, end - chapters[index].start)
     }
     init() {
+        // Position sync reads the book actually being listened to from here, and moves this player
+        // when a position arrives for the book it is holding paused.
+        PositionSync.shared.player = self
         tick = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                let seconds = self.player.currentTime().seconds
-                let reported = seconds.isFinite ? self.trackStart + seconds : self.trackStart
-                let now = Date()
-                if PlaybackMotion.accepts(reported, pending: self.pendingSeek, now: now) { self.pendingSeek = nil; self.position = reported }
-                // Playback that stopped on its own, a stream running dry say, saves where it stopped.
-                if self.playing != (self.player.rate > 0) { self.playing.toggle(); if !self.playing { self.savePosition() } }
-                if let end = self.sleepChapterEnd, self.position >= end { self.stopForSleep() }
-                if now >= self.nextPositionSave, let library = self.library {
-                    self.nextPositionSave = now.addingTimeInterval(15)
-                    self.savePosition()
-                    PositionSync.shared.pushWhileListening(library: library)
-                }
-                self.publish()
-            }
+            Task { @MainActor in self?.sample() }
         }
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in Task { @MainActor in self?.play() }; return .success }
@@ -151,16 +139,42 @@ struct AudioChapter: Identifiable {
             MainActor.assumeIsolated { self?.savePosition() }
         }
     }
+    /// One reading of the player's clock: where it has reached, and what that means for the book
+    /// being listened to. A tick is reported on the main queue and read a turn later, so it refuses
+    /// a player caught between books: `load` pauses, which reports a tick, and that tick is read at
+    /// the load's first await — with the tracks torn down, the clock it would read belongs to
+    /// whatever item the player still holds rather than to any book it could name.
+    func sample() {
+        guard !loading, player.currentItem?.status == .readyToPlay else { return }
+        let seconds = player.currentTime().seconds
+        let reported = seconds.isFinite ? trackStart + seconds : trackStart
+        let now = Date()
+        if PlaybackMotion.accepts(reported, pending: pendingSeek, now: now) { pendingSeek = nil; position = reported }
+        // Playback that stopped on its own, a stream running dry say, saves where it stopped.
+        if playing != (player.rate > 0) { playing.toggle(); if !playing { savePosition() } }
+        if let end = sleepChapterEnd, position >= end { stopForSleep() }
+        if now >= nextPositionSave, let library {
+            nextPositionSave = now.addingTimeInterval(15)
+            savePosition()
+            PositionSync.shared.pushWhileListening(library: library)
+        }
+        publish()
+    }
     func load(_ book: MediaBook, library: Library) async {
         guard bookID != book.id else { return }
         let request = UUID(); requestID = request
         setSleep()
         pause(); loading = true; error = nil
+        // The book being left goes with the tracks its position was measured against. Keeping it
+        // named over a cleared frame of reference lets the tick the pause above reports save the
+        // clock of whatever the player still holds as that book's position — five hours into a
+        // bundle recorded as the half hour into its current track, stamped as a fresh write here
+        // and pulled by the other device as the newest word on the book.
+        bookID = nil; tracks = []; trackIndex = -1
         telegramResource?.cancel(); telegramResource = nil
         defer { if requestID == request { loading = false } }
         do {
             guard let file = book.audio else { throw PortalError.message("Add an audiobook to this title first.") }
-            tracks = []; trackIndex = -1
             if file.hasSuffix(".audiobook.json") {
                 let bytes = try Data(contentsOf: library.file(file)); guard bytes.count <= 2_000_000 else { throw PortalError.message("Invalid audiobook manifest.") }
                 let bundle = try JSONDecoder().decode(LocalAudioBundle.self, from: bytes)
@@ -169,7 +183,7 @@ struct AudioChapter: Identifiable {
                 var start = 0.0
                 chapters = tracks.map { track in defer { start += Double(track.durationMs) / 1000 }; return AudioChapter(name: track.name, start: start) }
                 duration = start
-                seek(min(book.audioPosition, duration)); publish(); return
+                restore(book, library: library); publish(); return
             }
             let asset: AVURLAsset
             if book.streaming, let url = URL(string: file) {
@@ -210,8 +224,14 @@ struct AudioChapter: Identifiable {
             player.replaceCurrentItem(with: item)
             if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
             endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in Task { @MainActor in self?.pause(); self?.setSleep() } }
-            seek(min(book.audioPosition, total)); publish()
+            restore(book, library: library); publish()
         } catch { self.error = error.localizedDescription }
+    }
+    /// Where to resume from is read again here rather than taken from the book this load started
+    /// with: opening an audiobook awaits its asset, and a position pulled from the other device in
+    /// that time is the newer one — seeking to the stale snapshot would write it straight back out.
+    private func restore(_ book: MediaBook, library: Library) {
+        seek(min(library.book(book.id)?.audioPosition ?? book.audioPosition, duration), moved: false)
     }
     func play() {
         sleepPaused = false
@@ -231,17 +251,27 @@ struct AudioChapter: Identifiable {
     }
     /// Writes where the listener is to the library now. Playback does it every 15 seconds; pausing, jumping and the
     /// app going to the background do it at once.
-    func savePosition() {
+    ///
+    /// `moved` says whether the reader asked for this. Restoring a book to where it was left, or clamping that position
+    /// to a length only this device has measured, moves nothing: stamping it would have this device claim a write it
+    /// never made and outrank the other device's newer one.
+    func savePosition(moved: Bool = true) {
         guard let id = bookID, let library, let stored = library.book(id) else { return }
         // Only real progress is saved. An unchanged position stamped as new would win over newer listening on another
         // device when positions are exchanged, pulling that device back.
         guard abs(stored.audioPosition - position) >= 1 else { return }
-        library.update(id) { $0.audioPosition = position; $0.audioModifiedAt = Date(); $0.lastOpenedAt = Date(); if duration > 0 { $0.audioDuration = duration } }
+        library.update(id) {
+            $0.audioPosition = position; $0.lastOpenedAt = Date()
+            // Held forward, so a clock corrected backwards cannot make this device lose to itself.
+            if moved { $0.audioModifiedAt = PositionProtocol.stamped($0.audioModifiedAt) }
+            if duration > 0 { $0.audioDuration = duration }
+        }
     }
     func stopForOffline() { pause(); telegramResource?.cancel(); telegramResource = nil; player.replaceCurrentItem(with: nil); bookID = nil }
     /// Jumps playback. Repeated jumps build on the pending target, so three quick taps of +30 s move 90 s. `eased: false`
     /// is for a scrubber drag, where the bar already sits where the finger let go.
-    func seek(_ seconds: Double, eased: Bool = true) {
+    /// `moved: false` is for a position this device is only returning to, which `savePosition` records unstamped.
+    func seek(_ seconds: Double, eased: Bool = true, moved: Bool = true) {
         guard duration > 0 else { return }
         let now = Date()
         let shown = PlaybackMotion.shown(clock: clock, seek: lastSeek, now: now)
@@ -260,7 +290,7 @@ struct AudioChapter: Identifiable {
         player.seek(to: CMTime(seconds: max(0, position - trackStart), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             Task { @MainActor in if finished, let self, self.pendingSeek == jump { self.pendingSeek = nil } }
         }
-        savePosition(); publish()
+        savePosition(moved: moved); publish()
     }
     private func publish() {
         resyncClock()

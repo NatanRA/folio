@@ -217,7 +217,16 @@ struct TelegramError: LocalizedError {
     func select(_ id: Int64) async throws {
         artworkTask?.cancel(); artworkTask = nil; artworkTries.removeAll(); artworkDone.removeAll()
         chat = id; cursor = 0; entries = []; more = false; scanning = true
-        defer { if chat == id { scanning = false } }
+        // A scan is when a freshly set up device first learns these books exist, and so the first
+        // moment a listening position waiting on the service can be applied to one. Once the whole
+        // chat has been read rather than once a page: a long chat would otherwise post twenty times
+        // over a library that is still filling. It runs on the way out however the scan ended —
+        // the device most likely to lose a page to a flaky connection is the newly set up one, and
+        // the books read before that page are in the library and waiting for their position.
+        defer {
+            if chat == id { scanning = false }
+            if let library { PositionSync.shared.exchange(library: library) }
+        }
         selectedName = try await chatTitle(id)
         UserDefaults.standard.set(id, forKey: "telegram.selected:\(account)")
         try await loadMore()
@@ -246,9 +255,6 @@ struct TelegramError: LocalizedError {
                 }
             }
             try library.save()
-            // A scan is when a freshly set up device first learns these books exist, and so the
-            // first moment a listening position waiting on the server can be applied to one.
-            PositionSync.shared.exchange(library: library)
             loadArtwork()
         }
     }

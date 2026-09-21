@@ -115,7 +115,10 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
         // The bar learns of the jump first, so the player's own report of it, which can arrive during seekBook, finds it pending.
         motion.seek(to.coerceIn(0, duration), player, eased, chapters)
         player.seekBook(to)
-        prefs.edit().putLong("audio:${title.id}", to).putLong("audioModified:${title.id}", System.currentTimeMillis()).apply()
+        // A move the listener made here settles the book, so a position pulled from another
+        // device is no longer waiting for the player: drop the mark that says it is.
+        prefs.edit().putLong("audio:${title.id}", to).remove("pulled:${title.id}")
+            .putLong("audioModified:${title.id}", Positions.stamp(System.currentTimeMillis(), prefs.getLong("audioModified:${title.id}", 0))).apply()
     }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
