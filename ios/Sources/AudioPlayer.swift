@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreImage.CIFilterBuiltins
 import MediaPlayer
 import SwiftUI
 
@@ -18,6 +19,9 @@ struct AudioChapter: Identifiable {
     @Published var loading = false
     /// True while the full player screen is on screen, so the root view can hide the mini player.
     @Published var playerScreenVisible = false
+    /// The audiobook open in the full-screen player. It is presented from the root, so the book page
+    /// and the mini player can both open it.
+    @Published var playerRoute: PlayerRoute?
     @Published var speed = UserDefaults.standard.object(forKey: "audio.speed") as? Float ?? 1
     @Published var sleepDeadline: Date?
     @Published var sleepChapterEnd: Double?
@@ -70,6 +74,12 @@ struct AudioChapter: Identifiable {
     var chapterIndex: Int { chapters.lastIndex { $0.start <= position + 0.05 } ?? 0 }
     var chapterStart: Double { chapters.indices.contains(chapterIndex) ? chapters[chapterIndex].start : 0 }
     var chapterEnd: Double { chapters.indices.contains(chapterIndex + 1) ? chapters[chapterIndex + 1].start : duration }
+    /// How long chapter `index` runs: up to the next chapter, or to the end of the book for the last one.
+    func chapterLength(_ index: Int) -> Double {
+        guard chapters.indices.contains(index) else { return 0 }
+        let end = chapters.indices.contains(index + 1) ? chapters[index + 1].start : duration
+        return max(0, end - chapters[index].start)
+    }
     init() {
         tick = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -204,71 +214,254 @@ func mediaTime(_ seconds: Double) -> String {
     let t = max(0, Int(seconds)); return t >= 3600 ? String(format: "%d:%02d:%02d", t/3600, t/60%60, t%60) : String(format: "%d:%02d", t/60, t%60)
 }
 
+/// Names the audiobook the full-screen player shows, so any screen can open it.
+struct PlayerRoute: Identifiable, Hashable { let id: String }
+
+/// The player's backdrop: the cover's own colour, darkened until white text on it stays easy to read.
+enum PlayerPalette {
+    static let neutral = UIColor(hue: 0, saturation: 0, brightness: 0.14, alpha: 1)
+    /// Keeps the cover's hue, keeps its saturation within a calm range and fixes a dark brightness.
+    /// A grey cover has no hue worth keeping, so it gets the neutral dark rather than a muddy tint.
+    static func background(for average: UIColor) -> UIColor {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        guard average.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha), saturation > 0.12 else { return neutral }
+        return UIColor(hue: hue, saturation: min(max(saturation, 0.3), 0.7), brightness: 0.24, alpha: 1)
+    }
+    /// The average colour of an image, or nil when it cannot be read.
+    static func average(of image: UIImage) -> UIColor? {
+        guard let input = CIImage(image: image) else { return nil }
+        let filter = CIFilter.areaAverage(); filter.inputImage = input; filter.extent = input.extent
+        guard let output = filter.outputImage else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        CIContext(options: [.workingColorSpace: NSNull()]).render(output, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+        return UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
+    }
+}
+
+/// The full-screen player. Nothing scrolls: chapters open in their own sheet, so the controls never cover them.
 struct PlayerScreen: View {
     let id: String
     @EnvironmentObject var library: Library
     @EnvironmentObject var audio: AudioPlayer
+    @Environment(\.dismiss) private var dismiss
+    @State private var cover: UIImage?
+    @State private var background = Color(PlayerPalette.neutral)
+    /// The chapter a drag started in, held so playback crossing into the next chapter cannot move the scale mid-drag.
+    @State private var scrubChapter: (start: Double, length: Double)?
     @State private var scrub = 0.0
-    @State private var dragging = false
+    @State private var chaptersShown = false
     var body: some View {
         if let book = library.book(id) {
-            ScrollView {
-                VStack(spacing: 24) {
-                    BookCover(book: book).frame(width: 200, height: 290).shadow(color: .black.opacity(0.15), radius: 20, y: 10)
-                    Text(book.title).font(.title2.bold()).multilineTextAlignment(.center)
-                    if audio.loading { ProgressView("Opening audiobook…") }
-                    if let error = audio.error {
-                        Text(error).foregroundStyle(.red)
-                        if book.streaming { Button("Retry streaming") { Task { audio.stopForOffline(); await audio.load(book, library: library) } } }
-                    }
-                    if audio.chapters.count > 1 {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Chapters").font(.title3.bold()).padding(.bottom)
-                            ForEach(Array(audio.chapters.enumerated()), id: \.element.id) { index, chapter in
-                                Button { UISelectionFeedbackGenerator().selectionChanged(); audio.seek(chapter.start) } label: {
-                                    HStack { Text(chapter.name); Spacer(); Text(mediaTime(chapter.start)).monospacedDigit() }
-                                        .foregroundStyle(index == audio.chapterIndex ? Color.accentColor : .primary).padding(.vertical, 14)
-                                }
-                                Divider()
-                            }
-                        }
-                    }
-                }.padding(24)
+            VStack(spacing: 0) {
+                HStack {
+                    Button { dismiss() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 40, height: 40).background(.white.opacity(0.14), in: Circle()) }.accessibilityLabel("Close player")
+                    Spacer()
+                }
+                artwork(book).padding(.horizontal, 16).padding(.vertical, 20)
+                details(book)
+                scrubber.padding(.top, 14)
+                transport.padding(.top, 10)
+                controls.padding(.top, 10)
             }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    if audio.chapters.indices.contains(audio.chapterIndex) { Text(audio.chapters[audio.chapterIndex].name).font(.subheadline.weight(.semibold)).lineLimit(1) }
-                    Slider(value: Binding(get: { dragging ? scrub : audio.position }, set: { scrub = $0 }), in: 0...max(1, audio.duration), onEditingChanged: { editing in
-                        if editing { scrub = audio.position; dragging = true } else { audio.seek(scrub); dragging = false }
-                    }).accessibilityLabel("Audiobook position")
-                    HStack { Text(mediaTime(dragging ? scrub : audio.position)); Spacer(); Text(mediaTime(audio.duration)) }.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    HStack {
-                        Menu {
-                            ForEach([15, 30, 45, 60], id: \.self) { minutes in Button("\(minutes) minutes") { audio.setSleep(minutes: minutes) } }
-                            Button("End of chapter") { audio.setSleep(endOfChapter: true) }
-                            Button("Turn off timer") { audio.setSleep() }
-                        } label: {
-                            if let deadline = audio.sleepDeadline { Label { Text(deadline, style: .timer) } icon: { Image(systemName: "moon.zzz") } }
-                            else { Label(audio.sleepChapterEnd == nil ? "Sleep timer" : "End of chapter", systemImage: "moon.zzz") }
-                        }.frame(minHeight: 44)
-                        Spacer()
-                        Menu {
-                            ForEach([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3], id: \.self) { speed in
-                                Button("\(speed.formatted())×") { audio.setSpeed(Float(speed)) }
-                            }
-                        } label: { Text("\(audio.speed.formatted())×").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Playback speed")
-                    }
-                    HStack(spacing: 40) {
-                        Button { audio.seek(audio.position - 15) } label: { Image(systemName: "gobackward.15").font(.title) }.accessibilityLabel("Back 15 seconds")
-                        Button { audio.playing ? audio.pause() : audio.play() } label: { Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.title).frame(width: 72, height: 60).background(Color.accentColor.opacity(0.18), in: Capsule()) }.accessibilityLabel(audio.playing ? "Pause" : "Play")
-                        Button { audio.seek(audio.position + 30) } label: { Image(systemName: "goforward.30").font(.title) }.accessibilityLabel("Forward 30 seconds")
-                    }.padding(.top, 4).disabled(audio.loading || audio.bookID != id)
-                }.padding(.horizontal, 24).padding(.vertical, 12).background(.regularMaterial)
-            }
-            .navigationTitle("Audiobook").navigationBarTitleDisplayMode(.inline)
+            .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 8)
+            .foregroundStyle(.white).tint(.white)
+            .environment(\.colorScheme, .dark)
+            .presentationBackground(background)
+            .presentationDragIndicator(.visible)
+            .sheet(isPresented: $chaptersShown) { ChapterTimeline(background: background) }
             .onAppear { audio.playerScreenVisible = true }
             .onDisappear { audio.playerScreenVisible = false }
+            .task(id: book.cover) {
+                guard let name = book.cover, let image = UIImage(contentsOfFile: library.file(name).path) else { cover = nil; return }
+                cover = image
+                let tint = PlayerPalette.average(of: image).map(PlayerPalette.background(for:)) ?? PlayerPalette.neutral
+                withAnimation(.easeOut(duration: 0.25)) { background = Color(tint) }
+            }
             .task { await audio.load(book, library: library) }
+        }
+    }
+    @ViewBuilder private func artwork(_ book: MediaBook) -> some View {
+        if let cover {
+            Image(uiImage: cover).resizable().scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .shadow(color: .black.opacity(0.45), radius: 28, y: 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityHidden(true)
+        } else { BookCover(book: book).frame(maxWidth: 280, maxHeight: .infinity) }
+    }
+    private func details(_ book: MediaBook) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(book.title).font(.title3.bold()).lineLimit(1)
+            if !book.author.isEmpty { Text(book.author).foregroundStyle(.secondary).lineLimit(1) }
+            if audio.bookID == id, audio.chapters.count > 1, audio.chapters.indices.contains(audio.chapterIndex) {
+                Button { chaptersShown = true } label: {
+                    HStack(spacing: 4) { Text(audio.chapters[audio.chapterIndex].name).lineLimit(1); Image(systemName: "chevron.right").font(.caption.weight(.bold)) }
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.86)).frame(minHeight: 32)
+                }.accessibilityHint("Shows all chapters")
+            }
+            if audio.loading { ProgressView("Opening audiobook…").padding(.top, 8) }
+            if let error = audio.error {
+                Label(error, systemImage: "exclamationmark.triangle.fill").font(.subheadline).padding(.top, 8)
+                if book.streaming { Button("Retry streaming") { Task { audio.stopForOffline(); await audio.load(book, library: library) } }.buttonStyle(.bordered) }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    /// Scrubs within the current chapter, as the lock screen does, so a long book still gives fine control.
+    private var scrubber: some View {
+        let start = scrubChapter?.start ?? audio.chapterStart
+        let length = scrubChapter?.length ?? max(1, audio.chapterEnd - audio.chapterStart)
+        let elapsed = scrubChapter == nil ? min(max(0, audio.position - start), length) : scrub
+        return VStack(spacing: 6) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.24))
+                    Capsule().fill(.white).frame(width: proxy.size.width * elapsed / length)
+                }
+                .frame(height: scrubChapter == nil ? 5 : 9)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if scrubChapter == nil { scrubChapter = (start, length) }
+                        scrub = min(max(0, value.location.x / proxy.size.width), 1) * (scrubChapter?.length ?? length)
+                    }
+                    .onEnded { _ in
+                        if let chapter = scrubChapter { audio.seek(chapter.start + scrub) }
+                        scrubChapter = nil
+                    })
+            }.frame(height: 28)
+            HStack { Text(mediaTime(elapsed)); Spacer(); Text("−" + mediaTime(length - elapsed)) }
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        .animation(.easeOut(duration: 0.15), value: scrubChapter == nil)
+        .disabled(audio.loading || audio.bookID != id)
+        .accessibilityRepresentation {
+            Slider(value: Binding(get: { elapsed }, set: { audio.seek(start + $0) }), in: 0...length) { Text("Chapter position") }
+        }
+    }
+    private var transport: some View {
+        HStack {
+            Button { audio.seek(audio.position - 15) } label: { Image(systemName: "gobackward.15").font(.system(size: 30, weight: .medium)).frame(width: 60, height: 60) }.accessibilityLabel("Back 15 seconds")
+            Spacer()
+            Button { audio.playing ? audio.pause() : audio.play() } label: {
+                Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.system(size: 46)).frame(width: 76, height: 76).contentTransition(.symbolEffect(.replace))
+            }.accessibilityLabel(audio.playing ? "Pause" : "Play")
+            Spacer()
+            Button { audio.seek(audio.position + 30) } label: { Image(systemName: "goforward.30").font(.system(size: 30, weight: .medium)).frame(width: 60, height: 60) }.accessibilityLabel("Forward 30 seconds")
+        }
+        .frame(maxWidth: 290)
+        .disabled(audio.loading || audio.bookID != id)
+    }
+    private var controls: some View {
+        HStack {
+            Menu {
+                ForEach([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3], id: \.self) { speed in
+                    Button("\(speed.formatted())×") { audio.setSpeed(Float(speed)) }
+                }
+            } label: { Text("\(audio.speed.formatted())×").font(.body.weight(.semibold)).frame(minWidth: 56, minHeight: 44) }.accessibilityLabel("Playback speed")
+            Spacer()
+            Menu {
+                ForEach([15, 30, 45, 60], id: \.self) { minutes in Button("\(minutes) minutes") { audio.setSleep(minutes: minutes) } }
+                Button("End of chapter") { audio.setSleep(endOfChapter: true) }
+                Button("Turn off timer") { audio.setSleep() }
+            } label: {
+                Group {
+                    if let deadline = audio.sleepDeadline { Label { Text(deadline, style: .timer).monospacedDigit() } icon: { Image(systemName: "moon.zzz.fill") } }
+                    else { Image(systemName: audio.sleepChapterEnd == nil ? "moon.zzz" : "moon.zzz.fill") }
+                }.frame(minWidth: 56, minHeight: 44)
+            }
+            .accessibilityLabel("Sleep timer")
+            .accessibilityValue(audio.sleepDeadline != nil ? "On" : audio.sleepChapterEnd != nil ? "End of chapter" : "Off")
+            Spacer()
+            Button { chaptersShown = true } label: { Image(systemName: "list.bullet").frame(minWidth: 56, minHeight: 44) }
+                .accessibilityLabel("Chapters").disabled(audio.bookID != id || audio.chapters.count < 2)
+        }
+        .font(.title3)
+        .foregroundStyle(.white.opacity(0.8))
+        .frame(maxWidth: 300)
+    }
+}
+
+/// Every chapter on one timeline: finished ones dimmed, the current one opened up to show how far in it is.
+struct ChapterTimeline: View {
+    let background: Color
+    @EnvironmentObject var audio: AudioPlayer
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("accent") private var accentName = "Aquamarine"
+    private var accent: Color { portalAccent(accentName) }
+    var body: some View {
+        let current = audio.chapterIndex
+        let left = Duration.seconds(max(0, audio.duration - audio.position)).formatted(.units(allowed: [.hours, .minutes], width: .narrow))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Chapters").font(.title.bold())
+                    Text("\(audio.chapters.count) chapters · \(left) left").font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(.bordered).buttonBorderShape(.capsule)
+            }.padding(.horizontal, 20).padding(.top, 28).padding(.bottom, 12)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(audio.chapters.enumerated()), id: \.element.id) { index, chapter in
+                            row(index, chapter, current: current).id(index)
+                        }
+                    }.padding(.horizontal, 20).padding(.bottom, 24)
+                }
+                .onAppear { proxy.scrollTo(current, anchor: .center) }
+            }
+        }
+        .foregroundStyle(.white).tint(.white)
+        .environment(\.colorScheme, .dark)
+        .presentationBackground(background)
+        .presentationDragIndicator(.visible)
+    }
+    private func row(_ index: Int, _ chapter: AudioChapter, current: Int) -> some View {
+        let length = audio.chapterLength(index)
+        let rail = Color.white.opacity(0.16)
+        return Button { audio.seek(chapter.start); dismiss() } label: {
+            HStack(spacing: 16) {
+                ZStack {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(index == 0 ? .clear : rail).frame(width: 2)
+                        Rectangle().fill(index == audio.chapters.count - 1 ? .clear : rail).frame(width: 2)
+                    }
+                    node(index, current: current)
+                }.frame(width: 20).frame(maxHeight: .infinity)
+                if index == current {
+                    let elapsed = min(max(0, audio.position - chapter.start), length)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(chapter.name).font(.headline)
+                        ProgressView(value: elapsed, total: max(length, 1)).tint(accent)
+                        Text("\(mediaTime(elapsed)) of \(mediaTime(length)) · started at \(mediaTime(chapter.start))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 16)).padding(.vertical, 6)
+                } else {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(chapter.name).lineLimit(1).opacity(index < current ? 0.6 : 0.95)
+                        Text("\(mediaTime(chapter.start)) · \(mediaTime(length))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(chapter.name), starts at \(mediaTime(chapter.start))")
+        .accessibilityAddTraits(index == current ? .isSelected : [])
+    }
+    @ViewBuilder private func node(_ index: Int, current: Int) -> some View {
+        if index == current {
+            Circle().fill(accent).frame(width: 8, height: 8)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(background))
+                .overlay(Circle().strokeBorder(accent, lineWidth: 2))
+        } else if index < current {
+            Circle().fill(.white.opacity(0.55)).frame(width: 10, height: 10)
+        } else {
+            Circle().fill(background).frame(width: 10, height: 10).overlay(Circle().strokeBorder(.white.opacity(0.38), lineWidth: 2))
         }
     }
 }

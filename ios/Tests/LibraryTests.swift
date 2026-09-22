@@ -43,6 +43,7 @@ import ReadiumShared
         let book = MediaBook(title: "Two chapters", audio: "test.audiobook.json"); library.books.append(book); try library.save()
         let player = AudioPlayer(); await player.load(book, library: library)
         XCTAssertNil(player.error); XCTAssertEqual(player.duration, 24); XCTAssertEqual(player.chapters.count, 2)
+        XCTAssertEqual(player.chapterLength(0), 12); XCTAssertEqual(player.chapterLength(1), 12); XCTAssertEqual(player.chapterLength(2), 0)
         player.seek(14); XCTAssertEqual(player.position, 14); XCTAssertEqual(player.chapterIndex, 1)
         player.setSleep(endOfChapter: true); XCTAssertEqual(player.sleepChapterEnd, 24)
         player.setSleep(); player.pause()

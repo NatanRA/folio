@@ -96,6 +96,41 @@ final class PortalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5)); app.buttons["Pause"].tap()
         let audioShot = XCTAttachment(screenshot: app.screenshot()); audioShot.name = "Native audiobook player"; audioShot.lifetime = .keepAlways; add(audioShot)
     }
+    func testMiniPlayerKeepsTheTabBarReachable() throws {
+        let app = XCUIApplication(); app.launch()
+        app.tabBars.buttons["Library"].tap()
+        let audiobook = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Audiobook'")).firstMatch
+        let tileCount = app.scrollViews.firstMatch.buttons.allElementsBoundByIndex.filter { $0.isHittable && $0.frame.height > 150 }.count
+        for index in 0..<tileCount where !audiobook.exists {
+            let tiles = app.scrollViews.firstMatch.buttons.allElementsBoundByIndex.filter { $0.isHittable && $0.frame.height > 150 }
+            guard tiles.indices.contains(index) else { break }
+            tiles[index].tap()
+            if !audiobook.waitForExistence(timeout: 2) { app.navigationBars.buttons.firstMatch.tap() }
+        }
+        guard audiobook.exists else { throw XCTSkip("Requires a seeded audiobook in the simulator library") }
+        audiobook.tap()
+        let play = app.buttons["Play"]; XCTAssertTrue(play.waitForExistence(timeout: 10)); play.tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
+        // Chapters open in a sheet of their own rather than scrolling under the controls.
+        let chapters = app.buttons["Chapters"]
+        if chapters.waitForExistence(timeout: 2), chapters.isEnabled {
+            chapters.tap()
+            let done = app.buttons["Done"]; XCTAssertTrue(done.waitForExistence(timeout: 5)); done.tap()
+        }
+        // Closing the player while it plays is what brings the mini player up.
+        app.buttons["Close player"].tap()
+        app.tabBars.buttons["Home"].tap()
+        let mini = app.buttons["Pause audiobook"]; XCTAssertTrue(mini.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(mini.frame.maxY, app.tabBars.firstMatch.frame.minY + 1, "The mini player must sit above the tab bar, not over it")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Mini player above tab bar"; shot.lifetime = .keepAlways; add(shot)
+        app.tabBars.buttons["Downloads"].tap()
+        XCTAssertTrue(app.navigationBars["Downloads"].waitForExistence(timeout: 5))
+        // The mini player opens the full player again.
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open player'")).firstMatch.tap()
+        let pause = app.buttons["Pause"]; XCTAssertTrue(pause.waitForExistence(timeout: 5)); pause.tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 5))
+        app.buttons["Close player"].tap()
+    }
     func testNativeNavigationAndAppearance() {
         let app = XCUIApplication(); app.launch()
         XCTAssertTrue(app.buttons["Add book"].waitForExistence(timeout: 15))

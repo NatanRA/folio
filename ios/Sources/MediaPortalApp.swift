@@ -117,7 +117,7 @@ struct PortalHome: View {
             catalogue(home: true, downloads: false).tabItem { Label("Home", systemImage: "house") }.tag(0)
             catalogue(home: false, downloads: false).tabItem { Label("Library", systemImage: "books.vertical") }.tag(1)
             catalogue(home: false, downloads: true).tabItem { Label("Downloads", systemImage: "arrow.down.circle") }.tag(2)
-            NavigationStack { ServerScreen(onSearch: openSearch) }.tabItem { Label("Server", systemImage: "externaldrive") }.tag(3)
+            NavigationStack { ServerScreen(onSearch: openSearch) }.safeAreaInset(edge: .bottom) { miniPlayer }.tabItem { Label("Server", systemImage: "externaldrive") }.tag(3)
         }
         .id(navigation?.id)
         .onChange(of: navigation?.id, initial: true) { _, _ in
@@ -169,14 +169,6 @@ struct PortalHome: View {
         }
         .onChange(of: searchFocused) { _, value in if value { searching = true } }
         .onChange(of: freeBooks) { _, _ in searchFocused = false }
-        .safeAreaInset(edge: .bottom) {
-            if !audio.playerScreenVisible, let id = audio.bookID, let book = library.book(id) {
-                HStack {
-                    Image(systemName: "headphones"); Text(book.title).font(.subheadline).lineLimit(1); Spacer()
-                    Button { audio.playing ? audio.pause() : audio.play() } label: { Image(systemName: audio.playing ? "pause.fill" : "play.fill").frame(width: 44, height: 44) }.accessibilityLabel(audio.playing ? "Pause audiobook" : "Play audiobook")
-                }.padding(.horizontal, 20).background(.regularMaterial)
-            }
-        }
         .alert("Something needs attention", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) { Button("OK") { library.error = nil } } message: { Text(library.error ?? "") }
         .confirmationDialog("Add to your library", isPresented: $importChoice, titleVisibility: .visible) {
             Button("Load e-book") { importAudio = false; importing = true }
@@ -189,6 +181,7 @@ struct PortalHome: View {
             }
         }
         .sheet(isPresented: $appearance) { AppearanceScreen() }
+        .sheet(item: $audio.playerRoute) { PlayerScreen(id: $0.id) }
         .sheet(item: $server.pendingPairing) { PairingConfirmation(pairing: $0) }
     }
     /// Expands the search field out of the toolbar magnifier. The field scales in from its trailing edge,
@@ -283,6 +276,34 @@ struct PortalHome: View {
             }
             .refreshable { guard let account = server.account else { return }; do { try await server.refresh(account, library: library) } catch { library.error = error.localizedDescription } }
             .navigationDestination(item: pushedBinding(for: tabIndex)) { id in BookDetail(id: id) }
+        }.safeAreaInset(edge: .bottom) { miniPlayer }
+    }
+    /// Inset inside each tab, where the tab bar has already taken its space, so it sits above the bar.
+    /// Inset around the whole `TabView` instead, it was drawn over the tab bar and left no way to
+    /// change tabs while an audiobook was loaded.
+    /// It floats as its own capsule, matching the tab bar, rather than a full-width strip behind it.
+    @ViewBuilder private var miniPlayer: some View {
+        if !audio.playerScreenVisible, let id = audio.bookID, let book = library.book(id) {
+            HStack(spacing: 4) {
+                Button { audio.playerRoute = PlayerRoute(id: id) } label: {
+                    HStack(spacing: 12) {
+                        Group {
+                            if let cover = book.cover, let image = UIImage(contentsOfFile: library.file(cover).path) { Image(uiImage: image).resizable().scaledToFill() }
+                            else { Image(systemName: "headphones").frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.accentColor.opacity(0.12)) }
+                        }.frame(width: 36, height: 36).clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text(audio.chapters.indices.contains(audio.chapterIndex) ? audio.chapters[audio.chapterIndex].name : book.author).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                    }.contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Open player, \(book.title)")
+                Button { audio.playing ? audio.pause() : audio.play() } label: { Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.title3).frame(width: 44, height: 44) }.accessibilityLabel(audio.playing ? "Pause audiobook" : "Play audiobook")
+            }
+            .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
+            .miniPlayerBackground()
+            .padding(.horizontal, 20).padding(.bottom, 8)
         }
     }
 }
@@ -306,7 +327,7 @@ struct BookDetail: View {
                     HStack(spacing: 12) {
                         if book.ebook != nil { Button { reader = true } label: { formatLabel("E-book", icon: "book", progress: book.finished ? "Finished" : "\(Int(book.readingProgress * 100))%") }.buttonStyle(.plain) }
                         else if book.download != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.download(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "E-book") }.buttonStyle(.plain).disabled(library.busy) }
-                        if book.audio != nil { NavigationLink { PlayerScreen(id: id) } label: { formatLabel("Audiobook", icon: "headphones", progress: mediaTime(book.audioPosition)) }.buttonStyle(.plain) }
+                        if book.audio != nil { Button { audio.playerRoute = PlayerRoute(id: id) } label: { formatLabel("Audiobook", icon: "headphones", progress: mediaTime(book.audioPosition)) }.buttonStyle(.plain) }
                         else if book.audioDownload != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.downloadAudio(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "Audiobook") }.buttonStyle(.plain).disabled(library.busy) }
                     }
                     if book.ebook == nil && book.download == nil { Button("Add e-book") { audioImport = false; importer = true }.frame(minHeight: 44) }
@@ -401,6 +422,11 @@ private extension View {
     /// Lets the blurred page show through the search layer. The navigation container is opaque before iOS 18.
     @ViewBuilder func clearNavigationBackground() -> some View {
         if #available(iOS 18, *) { containerBackground(Color.clear, for: .navigation) } else { self }
+    }
+    /// Liquid Glass where the tab bar is glass too; a frosted capsule on earlier versions.
+    @ViewBuilder func miniPlayerBackground() -> some View {
+        if #available(iOS 26, *) { glassEffect(.regular, in: Capsule()) }
+        else { background(.regularMaterial, in: Capsule()).shadow(color: .black.opacity(0.12), radius: 12, y: 4) }
     }
 }
 
