@@ -1,5 +1,4 @@
 import AVFoundation
-import CoreImage.CIFilterBuiltins
 import MediaPlayer
 import SwiftUI
 
@@ -17,8 +16,6 @@ struct AudioChapter: Identifiable {
     @Published var chapters: [AudioChapter] = []
     @Published var error: String?
     @Published var loading = false
-    /// True while the full player screen is on screen, so the root view can hide the mini player.
-    @Published var playerScreenVisible = false
     /// The audiobook open in the full-screen player. It is presented from the root, so the book page
     /// and the mini player can both open it.
     @Published var playerRoute: PlayerRoute?
@@ -215,46 +212,31 @@ func mediaTime(_ seconds: Double) -> String {
 }
 
 /// Names the audiobook the full-screen player shows, so any screen can open it.
-struct PlayerRoute: Identifiable, Hashable { let id: String }
-
-/// The player's backdrop: the cover's own colour, darkened until white text on it stays easy to read.
-enum PlayerPalette {
-    static let neutral = UIColor(hue: 0, saturation: 0, brightness: 0.14, alpha: 1)
-    /// Keeps the cover's hue, keeps its saturation within a calm range and fixes a dark brightness.
-    /// A grey cover has no hue worth keeping, so it gets the neutral dark rather than a muddy tint.
-    static func background(for average: UIColor) -> UIColor {
-        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-        guard average.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha), saturation > 0.12 else { return neutral }
-        return UIColor(hue: hue, saturation: min(max(saturation, 0.3), 0.7), brightness: 0.24, alpha: 1)
-    }
-    /// The average colour of an image, or nil when it cannot be read.
-    static func average(of image: UIImage) -> UIColor? {
-        guard let input = CIImage(image: image) else { return nil }
-        let filter = CIFilter.areaAverage(); filter.inputImage = input; filter.extent = input.extent
-        guard let output = filter.outputImage else { return nil }
-        var pixel = [UInt8](repeating: 0, count: 4)
-        CIContext(options: [.workingColorSpace: NSNull()]).render(output, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
-        return UIColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
-    }
+struct PlayerRoute: Identifiable, Hashable {
+    let id: String
+    /// Opened from the mini player, so it zooms out of it and shrinks back into it.
+    var fromMiniPlayer = false
 }
 
 /// The full-screen player. Nothing scrolls: chapters open in their own sheet, so the controls never cover them.
+/// It follows the app's appearance like every other screen, with the reader's accent marking what can be touched.
 struct PlayerScreen: View {
     let id: String
     @EnvironmentObject var library: Library
     @EnvironmentObject var audio: AudioPlayer
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("accent") private var accentName = "Aquamarine"
     @State private var cover: UIImage?
-    @State private var background = Color(PlayerPalette.neutral)
     /// The chapter a drag started in, held so playback crossing into the next chapter cannot move the scale mid-drag.
     @State private var scrubChapter: (start: Double, length: Double)?
     @State private var scrub = 0.0
     @State private var chaptersShown = false
+    private var accent: Color { portalAccent(accentName) }
     var body: some View {
         if let book = library.book(id) {
             VStack(spacing: 0) {
                 HStack {
-                    Button { dismiss() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 40, height: 40).background(.white.opacity(0.14), in: Circle()) }.accessibilityLabel("Close player")
+                    Button { dismiss() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).foregroundStyle(.primary).frame(width: 40, height: 40).background(Color(uiColor: .secondarySystemFill), in: Circle()) }.accessibilityLabel("Close player")
                     Spacer()
                 }
                 artwork(book).padding(.horizontal, 16).padding(.vertical, 20)
@@ -264,19 +246,10 @@ struct PlayerScreen: View {
                 controls.padding(.top, 10)
             }
             .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 8)
-            .foregroundStyle(.white).tint(.white)
-            .environment(\.colorScheme, .dark)
-            .presentationBackground(background)
+            .tint(accent)
             .presentationDragIndicator(.visible)
-            .sheet(isPresented: $chaptersShown) { ChapterTimeline(background: background) }
-            .onAppear { audio.playerScreenVisible = true }
-            .onDisappear { audio.playerScreenVisible = false }
-            .task(id: book.cover) {
-                guard let name = book.cover, let image = UIImage(contentsOfFile: library.file(name).path) else { cover = nil; return }
-                cover = image
-                let tint = PlayerPalette.average(of: image).map(PlayerPalette.background(for:)) ?? PlayerPalette.neutral
-                withAnimation(.easeOut(duration: 0.25)) { background = Color(tint) }
-            }
+            .sheet(isPresented: $chaptersShown) { ChapterTimeline() }
+            .task(id: book.cover) { cover = book.cover.flatMap { UIImage(contentsOfFile: library.file($0).path) } }
             .task { await audio.load(book, library: library) }
         }
     }
@@ -284,7 +257,7 @@ struct PlayerScreen: View {
         if let cover {
             Image(uiImage: cover).resizable().scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 14))
-                .shadow(color: .black.opacity(0.45), radius: 28, y: 14)
+                .shadow(color: .black.opacity(0.18), radius: 20, y: 10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityHidden(true)
         } else { BookCover(book: book).frame(maxWidth: 280, maxHeight: .infinity) }
@@ -296,12 +269,12 @@ struct PlayerScreen: View {
             if audio.bookID == id, audio.chapters.count > 1, audio.chapters.indices.contains(audio.chapterIndex) {
                 Button { chaptersShown = true } label: {
                     HStack(spacing: 4) { Text(audio.chapters[audio.chapterIndex].name).lineLimit(1); Image(systemName: "chevron.right").font(.caption.weight(.bold)) }
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.86)).frame(minHeight: 32)
+                        .font(.subheadline.weight(.semibold)).frame(minHeight: 32)
                 }.accessibilityHint("Shows all chapters")
             }
             if audio.loading { ProgressView("Opening audiobook…").padding(.top, 8) }
             if let error = audio.error {
-                Label(error, systemImage: "exclamationmark.triangle.fill").font(.subheadline).padding(.top, 8)
+                Label(error, systemImage: "exclamationmark.triangle.fill").font(.subheadline).foregroundStyle(.red).padding(.top, 8)
                 if book.streaming { Button("Retry streaming") { Task { audio.stopForOffline(); await audio.load(book, library: library) } }.buttonStyle(.bordered) }
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -314,8 +287,8 @@ struct PlayerScreen: View {
         return VStack(spacing: 6) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.24))
-                    Capsule().fill(.white).frame(width: proxy.size.width * elapsed / length)
+                    Capsule().fill(Color(uiColor: .systemFill))
+                    Capsule().fill(accent).frame(width: proxy.size.width * elapsed / length)
                 }
                 .frame(height: scrubChapter == nil ? 5 : 9)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -341,13 +314,14 @@ struct PlayerScreen: View {
     }
     private var transport: some View {
         HStack {
-            Button { audio.seek(audio.position - 15) } label: { Image(systemName: "gobackward.15").font(.system(size: 30, weight: .medium)).frame(width: 60, height: 60) }.accessibilityLabel("Back 15 seconds")
+            Button { audio.seek(audio.position - 15) } label: { Image(systemName: "gobackward.15").font(.system(size: 28, weight: .medium)).frame(width: 60, height: 60) }.accessibilityLabel("Back 15 seconds")
             Spacer()
             Button { audio.playing ? audio.pause() : audio.play() } label: {
-                Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.system(size: 46)).frame(width: 76, height: 76).contentTransition(.symbolEffect(.replace))
+                Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.system(size: 30)).frame(width: 80, height: 64)
+                    .background(accent.opacity(0.18), in: Capsule()).contentTransition(.symbolEffect(.replace))
             }.accessibilityLabel(audio.playing ? "Pause" : "Play")
             Spacer()
-            Button { audio.seek(audio.position + 30) } label: { Image(systemName: "goforward.30").font(.system(size: 30, weight: .medium)).frame(width: 60, height: 60) }.accessibilityLabel("Forward 30 seconds")
+            Button { audio.seek(audio.position + 30) } label: { Image(systemName: "goforward.30").font(.system(size: 28, weight: .medium)).frame(width: 60, height: 60) }.accessibilityLabel("Forward 30 seconds")
         }
         .frame(maxWidth: 290)
         .disabled(audio.loading || audio.bookID != id)
@@ -377,18 +351,18 @@ struct PlayerScreen: View {
                 .accessibilityLabel("Chapters").disabled(audio.bookID != id || audio.chapters.count < 2)
         }
         .font(.title3)
-        .foregroundStyle(.white.opacity(0.8))
         .frame(maxWidth: 300)
     }
 }
 
 /// Every chapter on one timeline: finished ones dimmed, the current one opened up to show how far in it is.
 struct ChapterTimeline: View {
-    let background: Color
     @EnvironmentObject var audio: AudioPlayer
     @Environment(\.dismiss) private var dismiss
     @AppStorage("accent") private var accentName = "Aquamarine"
     private var accent: Color { portalAccent(accentName) }
+    private let rail = Color(uiColor: .separator)
+    private let surface = Color(uiColor: .systemBackground)
     var body: some View {
         let current = audio.chapterIndex
         let left = Duration.seconds(max(0, audio.duration - audio.position)).formatted(.units(allowed: [.hours, .minutes], width: .narrow))
@@ -412,14 +386,12 @@ struct ChapterTimeline: View {
                 .onAppear { proxy.scrollTo(current, anchor: .center) }
             }
         }
-        .foregroundStyle(.white).tint(.white)
-        .environment(\.colorScheme, .dark)
-        .presentationBackground(background)
+        .tint(accent)
+        .presentationBackground(surface)
         .presentationDragIndicator(.visible)
     }
     private func row(_ index: Int, _ chapter: AudioChapter, current: Int) -> some View {
         let length = audio.chapterLength(index)
-        let rail = Color.white.opacity(0.16)
         return Button { audio.seek(chapter.start); dismiss() } label: {
             HStack(spacing: 16) {
                 ZStack {
@@ -437,10 +409,10 @@ struct ChapterTimeline: View {
                         Text("\(mediaTime(elapsed)) of \(mediaTime(length)) · started at \(mediaTime(chapter.start))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 16)).padding(.vertical, 6)
+                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16)).padding(.vertical, 6)
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(chapter.name).lineLimit(1).opacity(index < current ? 0.6 : 0.95)
+                        Text(chapter.name).lineLimit(1).foregroundStyle(index < current ? .secondary : .primary)
                         Text("\(mediaTime(chapter.start)) · \(mediaTime(length))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
@@ -456,12 +428,12 @@ struct ChapterTimeline: View {
         if index == current {
             Circle().fill(accent).frame(width: 8, height: 8)
                 .frame(width: 18, height: 18)
-                .background(Circle().fill(background))
+                .background(Circle().fill(surface))
                 .overlay(Circle().strokeBorder(accent, lineWidth: 2))
         } else if index < current {
-            Circle().fill(.white.opacity(0.55)).frame(width: 10, height: 10)
+            Circle().fill(Color(uiColor: .tertiaryLabel)).frame(width: 10, height: 10)
         } else {
-            Circle().fill(background).frame(width: 10, height: 10).overlay(Circle().strokeBorder(.white.opacity(0.38), lineWidth: 2))
+            Circle().fill(surface).frame(width: 10, height: 10).overlay(Circle().strokeBorder(Color(uiColor: .tertiaryLabel), lineWidth: 2))
         }
     }
 }

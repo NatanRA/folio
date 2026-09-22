@@ -32,8 +32,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -54,38 +52,6 @@ import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlinx.coroutines.delay
 
-private val Rail = Color.White.copy(alpha = .16f)
-
-/** The mean colour of a cover, sampled from a small copy so it stays cheap for large artwork. */
-internal fun averageArgb(bitmap: Bitmap): Int? {
-    val small = Bitmap.createScaledBitmap(bitmap, 24, 36, true)
-    val pixels = IntArray(small.width * small.height)
-    small.getPixels(pixels, 0, small.width, 0, 0, small.width, small.height)
-    if (small !== bitmap) small.recycle()
-    return PlayerPalette.average(pixels)
-}
-
-/**
- * The player is always light-on-dark over its cover-coloured backdrop, whatever the app theme, so
- * everything inside it, its own sheets included, takes a dark scheme built on that backdrop.
- */
-@Composable
-internal fun PlayerTheme(backdrop: Color, content: @Composable () -> Unit) {
-    val accent = MaterialTheme.colorScheme.primary.let { if (it.luminance() < .3f) lerp(it, Color.White, .45f) else it }
-    val raised = lerp(backdrop, Color.White, .08f)
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = accent, onPrimary = Color(0xFF101819), secondary = accent, onSecondary = Color(0xFF101819),
-        secondaryContainer = lerp(backdrop, accent, .35f), onSecondaryContainer = Color.White,
-        background = backdrop, surface = backdrop, onBackground = Color.White, onSurface = Color.White, onSurfaceVariant = Color.White.copy(alpha = .7f),
-        surfaceContainerLow = backdrop, surfaceContainer = raised, surfaceContainerHigh = raised, surfaceVariant = raised, outline = Color.White.copy(alpha = .3f)
-    )) { CompositionLocalProvider(LocalContentColor provides Color.White, content = content) }
-}
-
-@Composable
-internal fun PlayerDragHandle() {
-    Box(Modifier.padding(top = 10.dp, bottom = 6.dp).size(width = 36.dp, height = 5.dp).clip(CircleShape).background(Color.White.copy(alpha = .3f)))
-}
-
 /** The chapters the service split a title into; one item means the book has none. */
 private fun Player.chaptersOf(titleId: String): List<AudioChapter> {
     if (currentMediaItem?.mediaId != titleId || mediaItemCount < 2) return emptyList()
@@ -95,11 +61,13 @@ private fun Player.chaptersOf(titleId: String): List<AudioChapter> {
 
 /**
  * The full-screen player. Nothing scrolls: chapters open in their own sheet, so the controls never
- * cover them. [fallbackCover] draws the typographic cover when the title has no artwork.
+ * cover them. It follows the app theme like every other screen, with the accent marking what can be
+ * touched. [fallbackCover] draws the typographic cover when the title has no artwork.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, prefs: SharedPreferences, onStreamReady: () -> Unit, onClose: () -> Unit, fallbackCover: @Composable (Modifier) -> Unit) {
+internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, prefs: SharedPreferences, onStreamReady: () -> Unit, onClose: () -> Unit,
+    coverModifier: Modifier = Modifier, fallbackCover: @Composable (Modifier) -> Unit) {
     var position by remember(player) { mutableLongStateOf(player.bookPosition) }
     var duration by remember(player) { mutableLongStateOf(player.bookDuration) }
     var playing by remember(player) { mutableStateOf(player.isPlaying) }
@@ -131,49 +99,49 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
     }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 12.dp)) {
-        IconButton(onClick = onClose, modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = .14f))) { Icon(Icons.Outlined.KeyboardArrowDown, "Close player") }
+        IconButton(onClick = onClose, modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainer)) { Icon(Icons.Outlined.KeyboardArrowDown, "Close player") }
         Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp), contentAlignment = Alignment.Center) {
             val shape = RoundedCornerShape(14.dp)
-            if (artwork != null) Image(artwork.asImageBitmap(), null, Modifier.aspectRatio(artwork.width.toFloat() / artwork.height, matchHeightConstraintsFirst = true)
-                .shadow(28.dp, shape, spotColor = Color.Black.copy(alpha = .6f)).clip(shape), contentScale = ContentScale.Crop)
-            else fallbackCover(Modifier.aspectRatio(.67f, matchHeightConstraintsFirst = true))
+            if (artwork != null) Image(artwork.asImageBitmap(), null, coverModifier.aspectRatio(artwork.width.toFloat() / artwork.height, matchHeightConstraintsFirst = true)
+                .shadow(16.dp, shape).clip(shape), contentScale = ContentScale.Crop)
+            else fallbackCover(coverModifier.aspectRatio(.67f, matchHeightConstraintsFirst = true))
         }
         Text(title.name, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (title.author.isNotBlank()) Text(title.author, color = muted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (chapters.size > 1) TextButton(onClick = { chaptersOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.heightIn(min = 40.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = .86f))) {
+        if (chapters.size > 1) TextButton(onClick = { chaptersOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.heightIn(min = 40.dp)) {
             Text(chapters[current].name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.size(18.dp))
         }
         playbackError?.let { message ->
-            Text(message, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            Text(message, fontSize = 13.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
             if (title.streaming) TextButton(onClick = { playbackError = null; player.prepare(); player.play() }, contentPadding = PaddingValues(0.dp)) { Text("Retry streaming") }
         }
         Column(Modifier.fillMaxWidth().padding(top = 12.dp).testTag("audio-controls")) {
             ChapterScrubber(chapterStart, chapterLength, position, ready, ::seek)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { seek((player.bookPosition - 15000).coerceAtLeast(0)) }, enabled = ready, modifier = Modifier.size(60.dp)) {
+                val accent = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                IconButton(onClick = { seek((player.bookPosition - 15000).coerceAtLeast(0)) }, enabled = ready, colors = accent, modifier = Modifier.size(60.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Outlined.Replay, "Back 15 seconds", Modifier.size(36.dp))
                         Text("15", fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
                     }
                 }
-                IconButton(onClick = { if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } },
-                    enabled = ready, modifier = Modifier.size(76.dp)) {
-                    Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(54.dp))
+                FilledTonalIconButton(onClick = { if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } },
+                    enabled = ready, modifier = Modifier.size(width = 80.dp, height = 64.dp), shape = CircleShape,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .18f), contentColor = MaterialTheme.colorScheme.primary)) {
+                    Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
                 }
-                IconButton(onClick = { seek((player.bookPosition + 30000).coerceAtMost(duration)) }, enabled = ready, modifier = Modifier.size(60.dp)) {
+                IconButton(onClick = { seek((player.bookPosition + 30000).coerceAtMost(duration)) }, enabled = ready, colors = accent, modifier = Modifier.size(60.dp)) {
                     Icon(Icons.Outlined.Forward30, "Forward 30 seconds", Modifier.size(36.dp))
                 }
             }
-            CompositionLocalProvider(LocalContentColor provides Color.White.copy(alpha = .8f)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { speedOpen = true }, enabled = player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH),
-                        colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current), modifier = Modifier.heightIn(min = 48.dp).testTag("playback-speed")) {
-                        Text("${speed.toString().removeSuffix(".0")}×", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    SleepTimer(prefs)
-                    IconButton(onClick = { chaptersOpen = true }, enabled = chapters.size > 1) { Icon(Icons.AutoMirrored.Outlined.List, "Chapters") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { speedOpen = true }, enabled = player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH), modifier = Modifier.heightIn(min = 48.dp).testTag("playback-speed")) {
+                    Text("${speed.toString().removeSuffix(".0")}×", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                }
+                SleepTimer(prefs)
+                IconButton(onClick = { chaptersOpen = true }, enabled = chapters.size > 1, colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)) {
+                    Icon(Icons.AutoMirrored.Outlined.List, "Chapters")
                 }
             }
         }
@@ -233,8 +201,8 @@ private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: L
                 detectTapGestures { offset -> latestSeek(latestStart + ((offset.x / size.width).coerceIn(0f, 1f) * latestLength).toLong()) }
             },
             contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(thickness).clip(CircleShape).background(Color.White.copy(alpha = .24f)))
-            Box(Modifier.width(maxWidth * (elapsed.toFloat() / length)).height(thickness).clip(CircleShape).background(Color.White))
+            Box(Modifier.fillMaxWidth().height(thickness).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = .12f)))
+            Box(Modifier.width(maxWidth * (elapsed.toFloat() / length)).height(thickness).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
         }
         Row(Modifier.fillMaxWidth()) {
             Text(audioTime(elapsed), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f))
@@ -247,16 +215,17 @@ private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: L
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, position: Long, duration: Long, onSelect: (AudioChapter) -> Unit, onDismiss: () -> Unit) {
-    val backdrop = MaterialTheme.colorScheme.background
+    val surface = BottomSheetDefaults.ContainerColor
     val accent = MaterialTheme.colorScheme.primary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = backdrop, dragHandle = { PlayerDragHandle() }) {
+    val rail = MaterialTheme.colorScheme.outlineVariant
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Chapters", fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 Text("${chapters.size} chapters · ${hoursAndMinutes(duration - position)} left", color = muted, fontSize = 13.sp)
             }
-            FilledTonalButton(onClick = onDismiss, colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.White.copy(alpha = .14f), contentColor = Color.White)) { Text("Done") }
+            FilledTonalButton(onClick = onDismiss) { Text("Done") }
         }
         LazyColumn(state = rememberLazyListState((current - 2).coerceAtLeast(0)), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
             itemsIndexed(chapters) { index, chapter ->
@@ -265,15 +234,15 @@ private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, pos
                     .semantics(mergeDescendants = true) { selected = index == current }) {
                     Box(Modifier.width(20.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         Column(Modifier.fillMaxHeight()) {
-                            Box(Modifier.weight(1f).width(2.dp).background(if (index == 0) Color.Transparent else Rail))
-                            Box(Modifier.weight(1f).width(2.dp).background(if (index == chapters.lastIndex) Color.Transparent else Rail))
+                            Box(Modifier.weight(1f).width(2.dp).background(if (index == 0) Color.Transparent else rail))
+                            Box(Modifier.weight(1f).width(2.dp).background(if (index == chapters.lastIndex) Color.Transparent else rail))
                         }
                         when {
-                            index == current -> Box(Modifier.size(18.dp).clip(CircleShape).background(backdrop).border(2.dp, accent, CircleShape), contentAlignment = Alignment.Center) {
+                            index == current -> Box(Modifier.size(18.dp).clip(CircleShape).background(surface).border(2.dp, accent, CircleShape), contentAlignment = Alignment.Center) {
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(accent))
                             }
-                            index < current -> Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White.copy(alpha = .55f)))
-                            else -> Box(Modifier.size(10.dp).clip(CircleShape).background(backdrop).border(2.dp, Color.White.copy(alpha = .38f), CircleShape))
+                            index < current -> Box(Modifier.size(10.dp).clip(CircleShape).background(muted.copy(alpha = .55f)))
+                            else -> Box(Modifier.size(10.dp).clip(CircleShape).background(surface).border(2.dp, muted.copy(alpha = .5f), CircleShape))
                         }
                     }
                     Spacer(Modifier.width(16.dp))
@@ -283,11 +252,11 @@ private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, pos
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(chapter.name, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             LinearProgressIndicator(progress = { if (length > 0) elapsed.toFloat() / length else 0f }, modifier = Modifier.fillMaxWidth().height(4.dp),
-                                color = accent, trackColor = Color.White.copy(alpha = .18f), gapSize = 0.dp, drawStopIndicator = {})
+                                color = accent, trackColor = accent.copy(alpha = .18f), gapSize = 0.dp, drawStopIndicator = {})
                             Text("${audioTime(elapsed)} of ${audioTime(length)} · started at ${audioTime(chapter.startMs)}", color = muted, fontSize = 12.sp)
                         }
                     } else Column(Modifier.weight(1f).heightIn(min = 58.dp).padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.Center) {
-                        Text(chapter.name, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Color.White.copy(alpha = if (index < current) .6f else .95f))
+                        Text(chapter.name, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (index < current) muted else MaterialTheme.colorScheme.onSurface)
                         Text("${audioTime(chapter.startMs)} · ${audioTime(length)}", color = muted, fontSize = 12.sp)
                     }
                 }
@@ -315,18 +284,20 @@ internal fun rememberNowPlaying(player: Player?): NowPlaying? {
 /**
  * A floating glass capsule that keeps a loaded audiobook in reach once the player is closed. It
  * matches the tab bar's material and sits above it; the caller places it so it never covers the bar.
+ * [capsuleModifier] and [thumbnailModifier] let the caller morph the capsule and cover into the player.
  */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
-internal fun MiniPlayer(title: Title, detail: String, playing: Boolean, artwork: Bitmap?, hazeState: HazeState, onOpen: () -> Unit, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+internal fun MiniPlayer(title: Title, detail: String, playing: Boolean, artwork: Bitmap?, hazeState: HazeState, onOpen: () -> Unit, onToggle: () -> Unit,
+    modifier: Modifier = Modifier, capsuleModifier: Modifier = Modifier, thumbnailModifier: Modifier = Modifier) {
     val accent = MaterialTheme.colorScheme.primary
-    Row(modifier.padding(horizontal = 28.dp).fillMaxWidth().height(56.dp).clip(CircleShape)
+    Row(modifier.padding(horizontal = 28.dp).then(capsuleModifier).fillMaxWidth().height(56.dp).clip(CircleShape)
         .hazeEffect(hazeState, HazeMaterials.thin(MaterialTheme.colorScheme.surfaceContainer))
         .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .08f), CircleShape)
         .testTag("mini-player"), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onOpen).padding(start = 10.dp)
             .semantics(mergeDescendants = true) { contentDescription = "Open player, ${title.name}" }, verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(accent.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
+            Box(thumbnailModifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(accent.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
                 if (artwork != null) Image(artwork.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 else Icon(Icons.Outlined.Headphones, null, tint = accent, modifier = Modifier.size(20.dp))
             }

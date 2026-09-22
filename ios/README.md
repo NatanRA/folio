@@ -15,7 +15,7 @@ The device build is packaged as an **unsigned IPA**. Import the IPA in SideStore
 - Embedded artwork extraction and manual JPG/PNG replacement.
 - Readium EPUB pagination, chapters, estimated-page grid, left-aligned serif text, text-size/scroll options and an end-of-book completion action.
 - Background audio, iOS Now Playing commands and chapter-relative progress for chapter metadata recognized by AVFoundation, on the lock screen and in the app.
-- A full-screen player coloured from the cover, with chapters on their own timeline sheet and a mini player above the tab bar once it is closed.
+- A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet.
 - BookLore OPDS browsing/downloads with cached local books and Keychain credentials.
 - Manual approximate KOReader progress receive/send and undo; sending requires the companion plugin in `../koreader`.
 - System/light/dark appearance with aquamarine, blue, lilac and peach accents.

@@ -30,7 +30,7 @@ internal fun SleepTimer(prefs: SharedPreferences) {
         }
     }
     val active = endOfChapter || minutesLeft != null
-    TextButton(onClick = { open = true }, colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current),
+    TextButton(onClick = { open = true },
         modifier = Modifier.heightIn(min = 48.dp).semantics(mergeDescendants = true) {
             contentDescription = "Sleep timer"
             stateDescription = if (endOfChapter) "End of chapter" else minutesLeft?.let { "$it minutes left" } ?: "Off"

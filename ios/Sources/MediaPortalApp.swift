@@ -99,6 +99,7 @@ struct PortalHome: View {
     @EnvironmentObject var server: BookServer
     @EnvironmentObject var audio: AudioPlayer
     @State private var tab = 0
+    @Namespace private var playerZoom
     @State private var search = ""
     @State private var searching = false
     @State private var freeBooks = false
@@ -117,7 +118,7 @@ struct PortalHome: View {
             catalogue(home: true, downloads: false).tabItem { Label("Home", systemImage: "house") }.tag(0)
             catalogue(home: false, downloads: false).tabItem { Label("Library", systemImage: "books.vertical") }.tag(1)
             catalogue(home: false, downloads: true).tabItem { Label("Downloads", systemImage: "arrow.down.circle") }.tag(2)
-            NavigationStack { ServerScreen(onSearch: openSearch) }.safeAreaInset(edge: .bottom) { miniPlayer }.tabItem { Label("Server", systemImage: "externaldrive") }.tag(3)
+            NavigationStack { ServerScreen(onSearch: openSearch) }.safeAreaInset(edge: .bottom) { miniPlayer(tab: 3) }.tabItem { Label("Server", systemImage: "externaldrive") }.tag(3)
         }
         .id(navigation?.id)
         .onChange(of: navigation?.id, initial: true) { _, _ in
@@ -181,7 +182,7 @@ struct PortalHome: View {
             }
         }
         .sheet(isPresented: $appearance) { AppearanceScreen() }
-        .sheet(item: $audio.playerRoute) { PlayerScreen(id: $0.id) }
+        .sheet(item: $audio.playerRoute) { route in PlayerScreen(id: route.id).zoomTransition(from: "mini-player", in: playerZoom, active: route.fromMiniPlayer) }
         .sheet(item: $server.pendingPairing) { PairingConfirmation(pairing: $0) }
     }
     /// Expands the search field out of the toolbar magnifier. The field scales in from its trailing edge,
@@ -276,16 +277,18 @@ struct PortalHome: View {
             }
             .refreshable { guard let account = server.account else { return }; do { try await server.refresh(account, library: library) } catch { library.error = error.localizedDescription } }
             .navigationDestination(item: pushedBinding(for: tabIndex)) { id in BookDetail(id: id) }
-        }.safeAreaInset(edge: .bottom) { miniPlayer }
+        }.safeAreaInset(edge: .bottom) { miniPlayer(tab: tabIndex) }
     }
     /// Inset inside each tab, where the tab bar has already taken its space, so it sits above the bar.
     /// Inset around the whole `TabView` instead, it was drawn over the tab bar and left no way to
     /// change tabs while an audiobook was loaded.
     /// It floats as its own capsule, matching the tab bar, rather than a full-width strip behind it.
-    @ViewBuilder private var miniPlayer: some View {
-        if !audio.playerScreenVisible, let id = audio.bookID, let book = library.book(id) {
+    /// Every tab carries its own copy, so only the visible tab's is the zoom source. It stays in place
+    /// under the open player, so the player has something to shrink back into.
+    @ViewBuilder private func miniPlayer(tab owner: Int) -> some View {
+        if let id = audio.bookID, let book = library.book(id) {
             HStack(spacing: 4) {
-                Button { audio.playerRoute = PlayerRoute(id: id) } label: {
+                Button { audio.playerRoute = PlayerRoute(id: id, fromMiniPlayer: true) } label: {
                     HStack(spacing: 12) {
                         Group {
                             if let cover = book.cover, let image = UIImage(contentsOfFile: library.file(cover).path) { Image(uiImage: image).resizable().scaledToFill() }
@@ -303,6 +306,7 @@ struct PortalHome: View {
             }
             .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
             .miniPlayerBackground()
+            .zoomSource(id: "mini-player", in: playerZoom, active: owner == tab)
             .padding(.horizontal, 20).padding(.bottom, 8)
         }
     }
@@ -422,6 +426,14 @@ private extension View {
     /// Lets the blurred page show through the search layer. The navigation container is opaque before iOS 18.
     @ViewBuilder func clearNavigationBackground() -> some View {
         if #available(iOS 18, *) { containerBackground(Color.clear, for: .navigation) } else { self }
+    }
+    /// Marks the view the player zooms out of, on iOS 18 and later.
+    @ViewBuilder func zoomSource(id: String, in namespace: Namespace.ID, active: Bool) -> some View {
+        if #available(iOS 18, *), active { matchedTransitionSource(id: id, in: namespace) } else { self }
+    }
+    /// Grows the player out of its source and, on a swipe down, shrinks it back in; iOS 17 keeps the plain sheet.
+    @ViewBuilder func zoomTransition(from id: String, in namespace: Namespace.ID, active: Bool) -> some View {
+        if #available(iOS 18, *), active { navigationTransition(.zoom(sourceID: id, in: namespace)) } else { self }
     }
     /// Liquid Glass where the tab bar is glass too; a frosted capsule on earlier versions.
     @ViewBuilder func miniPlayerBackground() -> some View {
