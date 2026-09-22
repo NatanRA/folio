@@ -28,9 +28,12 @@ class PublishReleaseTests(unittest.TestCase):
         self.argv = ['publish-release.py', 'v-test', '--apk', str(self.apk), '--ipa', str(self.ipa), '--notes', str(self.notes)]
         self.calls, self.uploads = [], {}
         self.incomplete = False
+        self.signer = release.ANDROID_CERTIFICATE_SHA256
 
     def run_command(self, *args):
         self.calls.append(args)
+        if args[0] == 'apksigner':
+            return f'Signer #1 certificate SHA-256 digest: {self.signer}'
         if args == ('git', 'status', '--porcelain'):
             return ''
         if args == ('git', 'rev-parse', 'HEAD'):
@@ -56,7 +59,7 @@ class PublishReleaseTests(unittest.TestCase):
         raise AssertionError(args)
 
     def invoke(self):
-        with patch.object(sys, 'argv', self.argv), patch.object(release, 'run', self.run_command), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(sys, 'argv', self.argv), patch.object(release, 'run', self.run_command), patch.object(release, 'apksigner', lambda: 'apksigner'), contextlib.redirect_stdout(io.StringIO()):
             release.main()
 
     def test_paired_release_preserves_current_and_legacy_links(self):
@@ -95,6 +98,13 @@ class PublishReleaseTests(unittest.TestCase):
                     self.invoke()
                 self.assertFalse(any(call[0] == 'gh' for call in self.calls))
                 package.write_bytes(original)
+
+    def test_apk_signed_with_another_key_is_refused_before_upload(self):
+        # The 0.9.2 APK's debug certificate: an update signed like that will not install over Folio.
+        self.signer = 'e3f69267602b6f92d7964589f14fc4330ca190162d2764f6e1dab0f22bf695dd'
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            self.invoke()
+        self.assertFalse(any(call[0] == 'gh' for call in self.calls))
 
     def test_readme_links_match_uploaded_asset_names(self):
         readme = Path(__file__).resolve().parents[1].joinpath('README.md').read_text()

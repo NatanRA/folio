@@ -1,9 +1,27 @@
+import java.util.Properties
+
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
 android {
     namespace = "com.natan.mediaportal"
     compileSdk = 36
     defaultConfig { applicationId = "com.natan.mediaportal"; minSdk = 26; targetSdk = 36; versionCode = 56; versionName = "0.9.2"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true }
+    // Published APKs are signed with Folio's own release key rather than a machine's debug key, so an
+    // update installs over the last one whichever machine built it. The key and its passwords live
+    // outside the repository (see "Publishing updates" in the README); without them the release
+    // build is unsigned and the publisher refuses it.
+    val releaseSigning = Properties().apply {
+        File(System.getProperty("user.home"), ".android/folio-release.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+    }
+    signingConfigs {
+        if (!releaseSigning.isEmpty) create("folio") {
+            storeFile = File(releaseSigning.getProperty("storeFile"))
+            storePassword = releaseSigning.getProperty("storePassword")
+            keyAlias = releaseSigning.getProperty("keyAlias")
+            keyPassword = releaseSigning.getProperty("keyPassword")
+        }
+    }
+    buildTypes { release { signingConfig = signingConfigs.findByName("folio") } }
     compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }

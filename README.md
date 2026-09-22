@@ -90,6 +90,19 @@ Build and test locally, then:
 python3 scripts/publish-release.py RELEASE_TAG --apk dist/ANDROID.apk --ipa dist/IOS.ipa --notes release-notes.md
 ```
 
+Build the packages without a Telegram identity installed: anything inside them can be read by whoever downloads them, and the helper refuses a package that contains `telegram-private.json` (see [Telegram account setup](docs/telegram-library.md#account-setup)).
+
+Build the APK with `./gradlew :app:assembleRelease` and the IPA with `bash ios/package-ipa.sh`. The APK
+is signed with Folio's release key, which never enters the repository: the keystore is
+`~/.android/folio-release.jks` and its passwords are in `~/.android/folio-release.properties`, read by
+`app/build.gradle.kts`. Keep both files backed up somewhere safe, such as a password manager. Android
+only installs an update signed with the same key as the installed app, so a lost key means everyone
+uninstalls and starts again; to publish from another machine, copy both files there. The helper
+refuses an APK signed with anything else: its certificate SHA-256 must be
+`cd51ae36a3f1feabf8866113a40153d49bad794aa48b29164a11fe8cc86d6bf2` (`ANDROID_CERTIFICATE_SHA256` in
+`scripts/publish-release.py`). Releases up to 0.9.2 were signed with whichever machine's debug key
+built them.
+
 The helper uploads both packages as `Folio-Android.apk` and `Folio-iOS.ipa`, plus SHA-256 checksums, and verifies the draft assets before marking the release as latest. The README links automatically follow every update; never replace them with a version-specific URL. Legacy `Media-Portal-Android.apk` and `Media-Portal-iOS.ipa` aliases are also uploaded so older shared links keep working. When only one platform changes, include the latest verified package for the other platform and state that in the release notes. No hosted build runners are required.
 
 ## Remaining work
