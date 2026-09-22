@@ -122,6 +122,13 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
 
+### 0.9.4
+
+The player follows the app's light or dark theme and your accent colour, grows out of the mini
+player when you tap it and shrinks back into it when you swipe it down. Telegram setup reads as a
+first-time step, and a Telegram audiobook no longer starts a half-finished connection before setup.
+[Full notes](docs/releases/v0.9.4.md).
+
 ### 0.9.3
 
 The audiobook player is rebuilt around chapters on both platforms: it fits on one screen, takes its
