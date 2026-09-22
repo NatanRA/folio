@@ -48,7 +48,9 @@ class LibraryStore(private val context: Context) {
     private fun addedBackfill(vararg names: String) = names.filter { it.isNotBlank() }.map { file(it) }.filter { it.exists() }.minOfOrNull { it.lastModified() } ?: 0L
     fun save(titles: List<Title>) {
         val array = JSONArray()
-        titles.forEach { t -> array.put(JSONObject().put("id", t.id).put("name", t.name).put("author", t.author).put("ebook", t.ebook ?: "").put("audio", t.audio ?: "").put("download", t.download ?: "").put("coverUrl", t.coverUrl ?: "").put("description", t.description).put("downloadFormat", t.downloadFormat).put("telegramSource", t.telegramSource ?: "").put("addedAt", t.addedAt).put("audioDownload", t.audioDownload ?: "").put("audioDownloadFormat", t.audioDownloadFormat ?: "").put("seriesName", t.seriesName ?: "").put("seriesPosition", t.seriesPosition ?: Double.NaN)) }
+        titles.forEach { t -> array.put(JSONObject().put("id", t.id).put("name", t.name).put("author", t.author).put("ebook", t.ebook ?: "").put("audio", t.audio ?: "").put("download", t.download ?: "").put("coverUrl", t.coverUrl ?: "").put("description", t.description).put("downloadFormat", t.downloadFormat).put("telegramSource", t.telegramSource ?: "").put("addedAt", t.addedAt).put("audioDownload", t.audioDownload ?: "").put("audioDownloadFormat", t.audioDownloadFormat ?: "").put("seriesName", t.seriesName ?: "")
+            // Android's JSON refuses NaN, so a title without a series position leaves the key out; reading treats a missing key as none.
+            .apply { t.seriesPosition?.let { put("seriesPosition", it) } }) }
         val stream = catalog.startWrite()
         try { stream.write(array.toString().toByteArray()); catalog.finishWrite(stream) }
         catch (error: Exception) { catalog.failWrite(stream); throw error }
