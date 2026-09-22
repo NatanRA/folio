@@ -40,6 +40,10 @@ def main():
         with zipfile.ZipFile(path) as archive:
             if required not in archive.namelist() or archive.testzip() is not None:
                 parser.error(f'Invalid package: {path}')
+            # Anything inside a package can be read by whoever downloads it, so a published
+            # build must never carry the Telegram api_id/api_hash; people enter their own.
+            if any(Path(name).name == 'telegram-private.json' for name in archive.namelist()):
+                parser.error(f'{path} contains telegram-private.json. Rebuild without a Telegram identity before publishing.')
     with tempfile.TemporaryDirectory(prefix='media-release-') as folder:
         folder = Path(folder)
         assets = []

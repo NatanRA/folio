@@ -4,7 +4,9 @@
 Telegram issues an api_id and api_hash to the developer of a client rather than to each
 person using it, so they belong to the build. Create an application at
 https://my.telegram.org/apps, then run this script. It writes the two untracked files the
-apps read at runtime; neither is ever committed.
+apps read at runtime; neither is ever committed. Use it only for builds that stay on your own
+machine: anything bundled in a package can be read from it, so the release publisher refuses
+packages that contain these files, and published builds ask for the pair on each device.
 
 The values are read from a prompt rather than the command line so they stay out of shell
 history. Pass --api-id when scripting a build machine.

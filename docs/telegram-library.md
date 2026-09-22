@@ -26,20 +26,19 @@ Reading and listening positions continue to use the existing device stores.
 
 Register this application at https://my.telegram.org/apps to obtain its own
 api_id/api_hash. Do not reuse Telegram's sample identity or the BotFather token.
-Telegram issues that pair to the developer of a client, not to each person using
-it, so it belongs to the build: readers must never be asked for one. Install it
-with `python3 scripts/set-telegram-identity.py`, which writes
-`ios/Resources/telegram-private.json` and `app/src/main/assets/telegram-private.json`.
-Both paths are gitignored, so the pair ships inside the APK/IPA but stays out of
-version control. Extraction from a distributed binary is inherent to every
-Telegram client and is accepted here; the account itself is still protected by
-the sign-in below.
 
-A pair entered in Server settings is kept per device — encrypted with Keystore on
-Android, in the Keychain on iOS — and overrides the bundled one, which keeps a
-personal build working without installing an identity. That entry is an advanced
-option, not the first-run path; it is the only path offered when a build carries
-no identity at all.
+Published packages carry no pair. Anything bundled into an APK or IPA can be read
+by whoever has the file, and releases are uploaded to GitHub, so from 0.9.3 the
+pair is entered once on each device under Server → Telegram instead. It is kept
+per device — encrypted with Keystore on Android, in the Keychain on iOS — and the
+account itself is still protected by the sign-in below. `scripts/publish-release.py`
+refuses any package that contains `telegram-private.json`.
+
+For a personal build that never leaves your machine,
+`python3 scripts/set-telegram-identity.py` can still bundle the pair: it writes
+`ios/Resources/telegram-private.json` and `app/src/main/assets/telegram-private.json`,
+both gitignored. A pair entered on the device overrides a bundled one. Releases
+up to 0.9.2 were built this way, so their packages contain the pair.
 
 After installing the identity, regenerate the iOS project
 (`xcodegen generate --spec ios/project.yml`) but do not commit the resulting

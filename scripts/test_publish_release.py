@@ -84,6 +84,18 @@ class PublishReleaseTests(unittest.TestCase):
             self.invoke()
         self.assertFalse(any(call[0] == 'gh' for call in self.calls))
 
+    def test_packages_carrying_telegram_credentials_are_refused_before_upload(self):
+        for package, entry in [(self.apk, 'assets/telegram-private.json'), (self.ipa, 'Payload/MediaPortal.app/telegram-private.json')]:
+            with self.subTest(entry=entry):
+                self.calls.clear()
+                original = package.read_bytes()
+                with zipfile.ZipFile(package, 'a') as archive:
+                    archive.writestr(entry, '{"api_id": 1, "api_hash": "0123456789abcdef0123456789abcdef"}')
+                with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                    self.invoke()
+                self.assertFalse(any(call[0] == 'gh' for call in self.calls))
+                package.write_bytes(original)
+
     def test_readme_links_match_uploaded_asset_names(self):
         readme = Path(__file__).resolve().parents[1].joinpath('README.md').read_text()
         for name in ('Folio-Android.apk', 'Folio-iOS.ipa'):
