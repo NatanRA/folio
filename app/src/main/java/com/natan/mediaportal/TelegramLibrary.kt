@@ -100,9 +100,10 @@ class TelegramLibrary private constructor(private val context: Context) {
     /** True once sign-in can start, whether the identity ships with the build or was entered here. */
     val configured get() = File(root, "app-identity").isFile || bundledIdentity() != null
     /**
-     * Telegram issues an api_id and api_hash to the developer of a client, not to each person using
-     * it, so they ship as an untracked `assets/telegram-private.json`. An identity entered on this
-     * device is encrypted into `app-identity` and overrides the bundled one.
+     * Telegram issues an api_id and api_hash to the developer of a client. Published builds carry
+     * none, so the reader enters a pair once and it is encrypted into `app-identity` on this device.
+     * A personal build may still bundle one as an untracked `assets/telegram-private.json`, which an
+     * entered pair overrides. See docs/telegram-library.md.
      */
     /** Reported to Telegram and shown in the reader's list of active sessions, so it has to be
      *  this build rather than a number written down once and left behind. */
@@ -127,7 +128,7 @@ class TelegramLibrary private constructor(private val context: Context) {
     private fun identity(): JSONObject {
         val file = File(root, "app-identity")
         if (!file.isFile) return bundledIdentity()
-            ?: throw IllegalStateException("This build has no Telegram application identity. Add one under Telegram in Server settings.")
+            ?: throw IllegalStateException("Finish setting up Telegram under Server settings.")
         val data = file.readBytes()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, identityKey(), GCMParameterSpec(128, data.copyOfRange(0, 12))) }
         return JSONObject(String(cipher.doFinal(data.copyOfRange(12, data.size)), Charsets.UTF_8))
@@ -319,6 +320,8 @@ class TelegramLibrary private constructor(private val context: Context) {
     fun downloaded(entry: TelegramFile): Boolean = LibraryStore(context).all().any { it.telegramSource == "$account:${entry.key}" && it.isLocal }
     suspend fun resolve(uri: Uri): TelegramFile {
         require(uri.scheme == "telegram" && uri.pathSegments.size >= 2)
+        // Starting without a pair would stall halfway through sign-in; ask for the one-time setup instead.
+        check(configured) { "Set up Telegram under Server to play this audiobook." }
         start()
         withTimeout(20_000) { auth.first { it == "authorizationStateReady" } }
         val me = request("getMe").getLong("id")

@@ -8,7 +8,7 @@ final class PortalUITests: XCTestCase {
         let field = app.textFields["API ID"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         XCTAssertTrue(app.secureTextFields["API hash"].exists)
-        XCTAssertFalse(app.buttons["Save & connect"].isEnabled)
+        XCTAssertFalse(app.buttons["Connect Telegram"].isEnabled)
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Telegram setup"; shot.lifetime = .keepAlways; add(shot)
     }
     func testUniversalSearchAcrossTabs() throws {

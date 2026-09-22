@@ -24,7 +24,7 @@ struct TelegramSettings: View {
     @ViewBuilder private var credentialFields: some View {
         TextField("API ID", text: $apiID).keyboardType(.numberPad)
         SecureField("API hash", text: $apiHash).textInputAutocapitalization(.never).autocorrectionDisabled()
-        Button("Save & connect") { run { try telegram.configure(id: apiID.trimmingCharacters(in: .whitespaces), hash: apiHash.trimmingCharacters(in: .whitespaces)); apiHash = ""; configured = true; telegram.start() } }.disabled(apiID.isEmpty || apiHash.isEmpty || busy)
+        Button("Connect Telegram") { run { try telegram.configure(id: apiID.trimmingCharacters(in: .whitespaces), hash: apiHash.trimmingCharacters(in: .whitespaces)); apiHash = ""; configured = true; telegram.start() } }.disabled(apiID.isEmpty || apiHash.isEmpty || busy)
     }
     private func run(_ action: @escaping () async throws -> Void) {
         Task { busy = true; telegram.error = nil; defer { busy = false }
@@ -36,7 +36,7 @@ struct TelegramSettings: View {
             DisclosureGroup(isExpanded: $expanded) {
                 Text("Audiobooks appear in your library. Tap a title to stream, or keep a copy offline.")
                 if !configured {
-                    Text("This build carries no Telegram application credentials, so it needs yours. Create an application at my.telegram.org/apps, then paste its two values here. They stay in this device’s Keychain.")
+                    Text("To get started, sign in at my.telegram.org/apps and create an app with any name. Paste its API ID and API hash below. You only do this once, and they’re stored securely on this device.")
                     Link("Open my.telegram.org/apps", destination: URL(string: "https://my.telegram.org/apps")!)
                     credentialFields
                 }

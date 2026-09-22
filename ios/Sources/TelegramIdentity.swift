@@ -1,9 +1,9 @@
 import Foundation
 
-/// Telegram issues an api_id and api_hash to the developer of a client, not to each person using
-/// it, so they belong to the build rather than to the reader: see docs/telegram-library.md. The
-/// pair ships as an untracked `Resources/telegram-private.json`, and a pair saved in the Keychain
-/// overrides it so a personal build still works without one.
+/// Telegram issues an api_id and api_hash to the developer of a client. Published builds carry
+/// none, so the reader enters a pair once and it is kept in this device's Keychain. A personal
+/// build may still bundle one as an untracked `Resources/telegram-private.json`, which a saved
+/// pair overrides. See docs/telegram-library.md.
 enum TelegramIdentity {
     struct Pair {
         let id: Int

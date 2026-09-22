@@ -15,7 +15,7 @@ class TelegramSettingsTest {
             compose.onNodeWithContentDescription("Server", useUnmergedTree = true).performClick()
             compose.onNodeWithText("Telegram").performScrollTo().performClick()
             compose.onNodeWithText("API ID").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Save & connect").performScrollTo().assertIsNotEnabled()
+            compose.onNodeWithText("Connect Telegram").performScrollTo().assertIsNotEnabled()
             val inst = InstrumentationRegistry.getInstrumentation()
             val folder = File("/sdcard/Android/media/${inst.targetContext.packageName}/test-output").apply { mkdirs() }
             inst.uiAutomation.takeScreenshot().let { bitmap -> File(folder, "telegram-settings.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }

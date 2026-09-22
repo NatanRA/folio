@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 
 @Composable fun TelegramSettings(imported: () -> Unit) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val telegram = remember { TelegramLibrary.get(context) }
     val auth by telegram.auth.collectAsState()
     val error by telegram.error.collectAsState()
@@ -45,10 +47,11 @@ import kotlinx.coroutines.launch
         val credentialFields: @Composable () -> Unit = {
             OutlinedTextField(apiId, { apiId = it }, label = { Text("API ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(apiHash, { apiHash = it }, label = { Text("API hash") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-            Button(onClick = { run { telegram.configure(apiId.trim(), apiHash.trim()); apiHash = ""; configured = true; ownCredentials = false; telegram.start() } }, enabled = !busy && apiId.isNotBlank() && apiHash.isNotBlank()) { Text("Save & connect") }
+            Button(onClick = { run { telegram.configure(apiId.trim(), apiHash.trim()); apiHash = ""; configured = true; ownCredentials = false; telegram.start() } }, enabled = !busy && apiId.isNotBlank() && apiHash.isNotBlank()) { Text("Connect Telegram") }
         }
         if (!configured) {
-            Text("This build carries no Telegram application credentials, so it needs yours. Create an application at my.telegram.org/apps, then paste its two values here. They are encrypted on this device.")
+            Text("To get started, sign in at my.telegram.org/apps and create an app with any name. Paste its API ID and API hash below. You only do this once, and they’re stored securely on this device.", style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { uriHandler.openUri("https://my.telegram.org/apps") }, contentPadding = PaddingValues(0.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text("Open my.telegram.org/apps") }
             credentialFields()
         }
         else if (auth == "disconnected") {

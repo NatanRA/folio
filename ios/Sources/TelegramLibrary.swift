@@ -149,7 +149,7 @@ struct TelegramError: LocalizedError {
         if type == "authorizationStateClosed" { client = 0; auth = "disconnected" }
         if type == "authorizationStateWaitTdlibParameters" { Task {
             do {
-                guard let identity = TelegramIdentity.current else { throw PortalError.message("This build has no Telegram application identity. Add one under Telegram in Server settings.") }
+                guard let identity = TelegramIdentity.current else { throw PortalError.message("Finish setting up Telegram under Server.") }
                 var key = SecureStore.read("telegram-database-key")
                 if key == nil {
                     var bytes = [UInt8](repeating: 0, count: 32)
@@ -307,6 +307,8 @@ struct TelegramError: LocalizedError {
         }
     }
     func resolve(_ url: URL) async throws -> TelegramFile {
+        // Starting without a pair would stall halfway through sign-in; ask for the one-time setup instead.
+        guard configured else { throw PortalError.message("Set up Telegram under Server to play this audiobook.") }
         start()
         let deadline = Date().addingTimeInterval(20)
         while auth != "authorizationStateReady" {
