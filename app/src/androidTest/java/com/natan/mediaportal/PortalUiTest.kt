@@ -43,7 +43,7 @@ class PortalUiTest {
                 compose.onNodeWithText("1.5×").performClick()
                 compose.waitUntil(5000) { prefs.getFloat("audioSpeed", 1f) == 1.5f }
                 compose.onNodeWithTag("playback-speed").assertTextContains("1.5×")
-                compose.onNodeWithText("Sleep timer").performClick()
+                compose.onNodeWithContentDescription("Sleep timer").performClick()
                 compose.onNodeWithText("15 minutes").performClick()
                 compose.waitUntil(5000) { prefs.getLong("sleep:deadline", 0) > System.currentTimeMillis() }
                 compose.onNodeWithContentDescription("Play").assertIsDisplayed()
@@ -51,7 +51,7 @@ class PortalUiTest {
                 compose.onNodeWithContentDescription("Pause").assertIsDisplayed()
                 prefs.edit().putLong("sleep:deadline", System.currentTimeMillis() + 1000).commit()
                 compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Play").fetchSemanticsNodes().isNotEmpty() && prefs.getLong("sleep:deadline", 0) == 0L }
-                compose.onNodeWithText("Sleep timer").performClick()
+                compose.onNodeWithContentDescription("Sleep timer").performClick()
                 compose.onNodeWithText("End of chapter").performClick()
                 compose.waitUntil(5000) { prefs.getBoolean("sleep:chapter", false) }
                 compose.onNodeWithContentDescription("Play").performClick()

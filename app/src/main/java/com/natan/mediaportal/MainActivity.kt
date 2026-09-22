@@ -45,11 +45,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,6 +90,30 @@ class MainActivity : ComponentActivity() {
     private var artworkMenu by mutableStateOf<Title?>(null)
     private var artworkTarget: String? = null
     private var artworkRevision by mutableIntStateOf(0)
+    /** The connection to the playback service, shared by the player and the mini player. */
+    private var audioController by mutableStateOf<MediaController?>(null)
+    private var audioFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
+    private var audioConnectionFailed by mutableStateOf(false)
+    /**
+     * Connects once a book is opened in this session, or when the service already holds one, so
+     * launching the app never starts the playback service on its own.
+     */
+    private fun connectAudio() {
+        if (audioFuture != null) return
+        audioConnectionFailed = false
+        val future = MediaController.Builder(this, SessionToken(this, android.content.ComponentName(this, PlaybackService::class.java))).buildAsync()
+        audioFuture = future
+        future.addListener({
+            try { audioController = future.get() }
+            catch (_: Exception) { audioConnectionFailed = true; audioFuture = null }
+        }, androidx.core.content.ContextCompat.getMainExecutor(this))
+    }
+    override fun onStart() { super.onStart(); if (PlaybackService.activeBook != null) connectAudio() }
+    override fun onDestroy() {
+        audioFuture?.let { MediaController.releaseFuture(it) }
+        audioFuture = null; audioController = null
+        super.onDestroy()
+    }
     private val pickArtwork = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val id = artworkTarget
         if (uri != null && id != null) lifecycleScope.launch {
@@ -163,6 +191,7 @@ class MainActivity : ComponentActivity() {
         FolioNavigation.from(intent.data?.toString())?.let { pendingNavigation = it; return }
         PairingLink.from(intent.data?.toString())?.let { pendingPairing = it }
     }
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingPairing = PairingLink.from(intent?.data?.toString())
@@ -195,6 +224,12 @@ class MainActivity : ComponentActivity() {
                 var sortMenu by remember { mutableStateOf(false) }
                 fun closeSearch() { searching = false; query = ""; freeBooks = false; focus.clearFocus() }
                 var listening by remember(homeReturn) { mutableStateOf<Title?>(if (homeReturn == 0 && intent.getBooleanExtra("openAudio", false)) local.find { it.id == getSharedPreferences("progress", MODE_PRIVATE).getString("activeAudio", null) } else null) }
+                // The page under the player stays composed, so closing the player refreshes the progress it shows.
+                LaunchedEffect(listening) { if (listening != null) connectAudio() else progressVersion++ }
+                val nowPlaying = rememberNowPlaying(audioController)
+                val mini = nowPlaying?.let { playing -> local.find { it.id == playing.titleId }?.let { playing to it } }
+                // Pages pad their bottom by this much more while the mini player floats over them.
+                val miniClearance = if (mini != null) 72.dp else 0.dp
                 LaunchedEffect(pendingNavigation) {
                     val destination = pendingNavigation ?: return@LaunchedEffect
                     selected = null
@@ -246,17 +281,12 @@ class MainActivity : ComponentActivity() {
                         // The activity fade already animates returning from the reader.
                         // Start directly at Home instead of layering a detail-exit animation.
                         key(homeReturn) { AnimatedContent(
-                            targetState = Triple(tab, selected, listening),
-                            contentKey = { (page, book, audio) -> audio?.let { "audio:${it.id}" } ?: book?.let { "book:${it.id}" } ?: "tab:$page" },
+                            targetState = tab to selected,
+                            contentKey = { (page, book) -> book?.let { "book:${it.id}" } ?: "tab:$page" },
                             modifier = Modifier.fillMaxSize(), label = "Screen navigation",
                             transitionSpec = {
-                                val tabs = initialState.second == null && initialState.third == null && targetState.second == null && targetState.third == null
-                                fun depth(state: Triple<Int, Title?, Title?>) = when {
-                                    state.third != null -> 2
-                                    state.second != null -> 1
-                                    else -> 0
-                                }
-                                val entering = depth(targetState) > depth(initialState)
+                                val tabs = initialState.second == null && targetState.second == null
+                                val entering = initialState.second == null && targetState.second != null
                                 if (tabs) {
                                     // Sibling destinations follow the order of the bottom bar.
                                     // Fade through instead of layering two dense libraries.
@@ -264,7 +294,7 @@ class MainActivity : ComponentActivity() {
                                     (fadeIn(tween(160, 90)) + slideInHorizontally(tween(250, easing = FastOutSlowInEasing)) { direction * (it / 20) })
                                         .togetherWith(fadeOut(tween(90))).using(null)
                                 } else if (entering) {
-                                    // Details/player enter above their parent; the parent stays put.
+                                    // Details enter above their parent; the parent stays put.
                                     (fadeIn(tween(180, 60)) + slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 8 })
                                         .togetherWith(fadeOut(tween(120))).apply { targetContentZIndex = 1f }.using(null)
                                 } else {
@@ -277,13 +307,12 @@ class MainActivity : ComponentActivity() {
                         ) { screen ->
                           Column(Modifier.fillMaxSize()) {
                           when {
-                            screen.third != null -> AudioPlayer(screen.third!!) { listening = null }
                             screen.second != null -> {
                                 val title = local.find { it.id == screen.second!!.id } ?: screen.second!!
-                                Detail(title, onListen = { listening = title })
+                                Detail(title, miniClearance, onListen = { listening = title })
                             }
-                            screen.first == 3 -> ServerSettings { refresh(it) }
-                            screen.first == 0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 100.dp)) {
+                            screen.first == 3 -> ServerSettings(miniClearance) { refresh(it) }
+                            screen.first == 0 -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 100.dp + miniClearance)) {
                                 val resume = local.filter { progress(it) in 1..99 }
                                     .sortedByDescending { getSharedPreferences("progress", MODE_PRIVATE).getLong("lastOpened:${it.id}", 0) }
                                 val featured = resume.firstOrNull() ?: titles.firstOrNull()
@@ -310,7 +339,7 @@ class MainActivity : ComponentActivity() {
                                     Text(if (query.isNotBlank()) "No matching titles" else if (screen.first == 2) "No downloads yet" else "No books yet", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                                     Text(if (screen.first == 2) "Open a book in your library and download it to read without a connection." else "Connect your server or load an e-book using +.", Modifier.padding(top = 12.dp), color = Muted)
                                 }
-                                LazyVerticalGrid(GridCells.Adaptive(104.dp), contentPadding = PaddingValues(20.dp, 0.dp, 20.dp, 100.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                                LazyVerticalGrid(GridCells.Adaptive(104.dp), contentPadding = PaddingValues(20.dp, 0.dp, 20.dp, 100.dp + miniClearance), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                                     items(filtered, key = { it.id }) { BookTile(it, Modifier.fillMaxWidth()) }
                                 }
                             }
@@ -319,7 +348,14 @@ class MainActivity : ComponentActivity() {
                         } }
                             }
                             // The floating tab bar sits over the page, so lists pad their bottom to scroll clear of it.
-                            if (selected == null && listening == null) GlassTabBar(tabItems, tab, { tab = it; closeSearch() }, hazeState, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).blur(blur))
+                            if (selected == null) GlassTabBar(tabItems, tab, { tab = it; closeSearch() }, hazeState, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).blur(blur))
+                            // The mini player floats 8dp above the 64dp tab bar, or at the bottom where there is no tab bar.
+                            if (listening == null) mini?.let { (playing, title) ->
+                                MiniPlayer(title, playing.detail, playing.playing, rememberArtwork(title, server, artworkRevision), hazeState,
+                                    onOpen = { listening = title },
+                                    onToggle = { audioController?.let { player -> if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } } },
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (selected == null) 84.dp else 12.dp).blur(blur))
+                            }
                             // Search floats over the content on a translucent, blurred layer so nothing behind it moves.
                             androidx.compose.animation.AnimatedVisibility(visible = searching, enter = fadeIn(tween(220)) + scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = .98f), exit = fadeOut(tween(170)) + scaleOut(tween(170), targetScale = .98f)) {
                                 Column(Modifier.fillMaxSize().background(Background.copy(alpha = .55f)).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { closeSearch() }) {
@@ -341,6 +377,20 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                    }
+                }
+                // The player is a full-height sheet over the whole app, like iOS: swipe it down or close it, and the mini player takes over.
+                listening?.let { title ->
+                    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    val scope = rememberCoroutineScope()
+                    val artwork = rememberArtwork(title, server, artworkRevision)
+                    val backdropArgb by produceState(PlayerPalette.neutral, artwork) {
+                        value = withContext(Dispatchers.Default) { artwork?.let(::averageArgb)?.let(PlayerPalette::backdrop) ?: PlayerPalette.neutral }
+                    }
+                    val backdrop by animateColorAsState(Color(backdropArgb), tween(300), label = "Player backdrop")
+                    ModalBottomSheet(onDismissRequest = { listening = null }, sheetState = sheetState, containerColor = backdrop, contentColor = Color.White,
+                        dragHandle = { PlayerDragHandle() }, modifier = Modifier.testTag("audio-player")) {
+                        PlayerTheme(backdrop) { AudioPlayer(title, artwork) { scope.launch { sheetState.hide() }.invokeOnCompletion { listening = null } } }
                     }
                 }
                 if (addMenu) AlertDialog(onDismissRequest = { addMenu = false }, title = { Text("Add to your library") }, text = {
@@ -413,9 +463,9 @@ class MainActivity : ComponentActivity() {
             Text(title.author.ifEmpty { if (title.audio != null) "Audiobook" else "Ebook" }, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    @Composable private fun Detail(title: Title, onListen: () -> Unit) {
+    @Composable private fun Detail(title: Title, bottomClearance: Dp, onListen: () -> Unit) {
         val prefs = remember { getSharedPreferences("progress", MODE_PRIVATE) }
-        val audioPosition = prefs.getLong("audio:${title.id}", 0).coerceAtLeast(0)
+        val audioPosition = progressVersion.let { prefs.getLong("audio:${title.id}", 0).coerceAtLeast(0) }
         val audioDuration by produceState(0L, title.audio) {
             value = withContext(Dispatchers.IO) {
                 title.audio?.let { filename ->
@@ -429,7 +479,7 @@ class MainActivity : ComponentActivity() {
         }
         BoxWithConstraints(Modifier.fillMaxSize()) {
         val coverWidth = if (maxHeight < 650.dp) 124.dp else 170.dp
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).padding(bottom = bottomClearance)) {
             Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Panel, Background))).padding(20.dp), contentAlignment = Alignment.Center) { Cover(title, Modifier.width(coverWidth).aspectRatio(.67f), server, artworkRevision) }
             TextButton(onClick = { artworkMenu = title }, enabled = busy == null, modifier = Modifier.align(Alignment.CenterHorizontally)) { Icon(Icons.Outlined.Image, null); Spacer(Modifier.width(8.dp)); Text("Edit artwork") }
             Text(title.name, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp))
@@ -480,12 +530,12 @@ class MainActivity : ComponentActivity() {
     private fun attachTo(title: Title, audio: Boolean) {
         choose(audio, title.id)
     }
-    @Composable private fun ServerSettings(connect: (ServerAccount) -> Unit) {
+    @Composable private fun ServerSettings(bottomClearance: Dp, connect: (ServerAccount) -> Unit) {
         val saved = remember(connected) { server.account() }
         var url by remember(saved) { mutableStateOf(saved?.url ?: "") }
         var user by remember(saved) { mutableStateOf(saved?.user ?: "") }
         var password by remember(saved) { mutableStateOf(saved?.password ?: "") }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).padding(bottom = 80.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).padding(bottom = 80.dp + bottomClearance)) {
             Text("Server settings", fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
             SettingsSection("BookLore", if (connected) "Connected · ${remote.size} titles" else "Not connected", Icons.Outlined.Dns) {
             Text("Browse your books here. Download favourites to keep reading anywhere.", color = Muted, modifier = Modifier.padding(bottom = 20.dp))
@@ -506,156 +556,25 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun choose(audio: Boolean, title: String?) { audioImport = audio; linkTo = title; pendingImport = audio }
-    @Composable private fun AudioPlayer(title: Title, close: () -> Unit) {
-        var controller by remember(title.id) { mutableStateOf<androidx.media3.session.MediaController?>(null) }
-        var connectionError by remember(title.id) { mutableStateOf(false) }
-        DisposableEffect(title.id) {
-            val token = androidx.media3.session.SessionToken(this@MainActivity, android.content.ComponentName(this@MainActivity, PlaybackService::class.java))
-            val future = androidx.media3.session.MediaController.Builder(this@MainActivity, token).buildAsync()
-            var active = true
-            future.addListener({
-                if (active) try {
-                    val connectedPlayer = future.get()
-                    if (connectedPlayer.currentMediaItem?.mediaId != title.id) {
-                        val savedPosition = getSharedPreferences("progress", MODE_PRIVATE).getLong("audio:${title.id}", 0)
-                        connectedPlayer.setMediaItem(MediaItem.Builder().setMediaId(title.id).build(), savedPosition)
-                        connectedPlayer.prepare()
-                    }
-                    controller = connectedPlayer
-                } catch (_: Exception) { connectionError = true }
-            }, androidx.core.content.ContextCompat.getMainExecutor(this@MainActivity))
-            onDispose { active = false; androidx.media3.session.MediaController.releaseFuture(future) }
-        }
-        val player = controller
-        if (player == null) {
-            Column(Modifier.padding(24.dp)) {
-                Text(if (connectionError) "Couldn’t connect to the audio player. Open the audiobook again to retry." else "Opening audio player…")
-                TextButton(onClick = close) { Text("Back to book") }
-            }
-        } else AudioPlayerControls(title, player, close)
-    }
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable private fun AudioPlayerControls(title: Title, player: androidx.media3.common.Player, close: () -> Unit) {
-        val prefs = remember { getSharedPreferences("progress", MODE_PRIVATE) }
-        var position by remember { mutableLongStateOf(player.bookPosition) }; var duration by remember { mutableLongStateOf(0L) }; var playing by remember { mutableStateOf(false) }
-        var playbackError by remember { mutableStateOf<String?>(null) }
-        var speed by remember(player) { mutableFloatStateOf(player.playbackParameters.speed) }
-        var speedOpen by remember { mutableStateOf(false) }
-        if (speedOpen) ModalBottomSheet(onDismissRequest = { speedOpen = false }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-                Text("Playback speed", style = MaterialTheme.typography.headlineSmall)
-                Text("Applies to all audiobooks. Voices keep their natural pitch.", color = Muted, modifier = Modifier.padding(vertical = 12.dp))
-                listOf(listOf(.5f, .75f, 1f), listOf(1.25f, 1.5f, 1.75f), listOf(2f, 2.5f, 3f)).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { value ->
-                            FilterChip(selected = kotlin.math.abs(speed - value) < .01f,
-                                onClick = { player.setPlaybackSpeed(value); speedOpen = false },
-                                label = { Text("${value}×") }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
-                        }
-                    }
-                }
-                TextButton(onClick = { speedOpen = false }, modifier = Modifier.align(Alignment.End)) { Text("Done") }
+    /** Hands the shared playback connection to the player screen, loading this title into it first. */
+    @Composable private fun AudioPlayer(title: Title, artwork: android.graphics.Bitmap?, close: () -> Unit) {
+        val player = audioController
+        LaunchedEffect(player, title.id) {
+            if (player != null && player.currentMediaItem?.mediaId != title.id) {
+                val savedPosition = getSharedPreferences("progress", MODE_PRIVATE).getLong("audio:${title.id}", 0)
+                player.setMediaItem(MediaItem.Builder().setMediaId(title.id).build(), savedPosition)
+                player.prepare()
             }
         }
-        var scrubbing by remember(title.id) { mutableStateOf(false) }
-        var snappedChapter by remember(title.id) { mutableStateOf<Long?>(null) }
-        val hapticView = LocalView.current
-        fun chapterTick() {
-            hapticView.performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 34) android.view.HapticFeedbackConstants.SEGMENT_TICK else android.view.HapticFeedbackConstants.CLOCK_TICK)
-        }
-        DisposableEffect(player) {
-            val listener = object : androidx.media3.common.Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) { duration = player.bookDuration; if (title.streaming && state == androidx.media3.common.Player.STATE_READY) artworkRevision++ }
-                override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) { duration = player.bookDuration }
-                override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
-                override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) { speed = parameters.speed }
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { playbackError = if (title.streaming) "Couldn’t buffer audio. Check your connection and Telegram sign-in, then retry." else "This audio could not be played. The file may be damaged or use an unsupported codec." }
-            }
-            player.addListener(listener)
-            onDispose { player.removeListener(listener) }
-        }
-        LaunchedEffect(player) { while (true) { if (!scrubbing) position = player.bookPosition; duration = player.bookDuration; playing = player.isPlaying; delay(1000) } }
-        val localChapters by produceState<List<AudioChapter>?>(null, title.audio) { value = if (title.streaming) emptyList() else withContext(Dispatchers.IO) { AudioChapters.read(store.file(title.audio!!)) } }
-        val chapters = if (title.streaming) (0 until player.mediaItemCount).map { index -> player.getMediaItemAt(index).let { AudioChapter(it.mediaMetadata.artist?.toString().orEmpty(), it.chapterStartMs) } } else localChapters
-        val available = chapters.orEmpty().filter { duration == 0L || it.startMs < duration }
-        val currentChapter = available.indexOfLast { it.startMs <= position }
-        Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = close, modifier = Modifier.padding(start = 4.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to book") }
-            Text("Audiobook", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-            Spacer(Modifier.width(52.dp))
-        }
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 20.dp).testTag("audio-content"), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) { Cover(title, Modifier.width(200.dp).aspectRatio(.69f).shadow(20.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black.copy(alpha = .15f), spotColor = Color.Black.copy(alpha = .15f)), server, artworkRevision) }
-            Text(title.name, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp))
-            if (playbackError != null && title.streaming) TextButton(onClick = { playbackError = null; player.prepare(); player.play() }) { Text("Retry streaming") }
-            var showChapters by remember(title.audio) { mutableStateOf(false) }
-            if (available.isNotEmpty()) {
-                TextButton(onClick = { showChapters = !showChapters }) { Text(if (showChapters) "Hide chapters" else "Chapters (${available.size})") }
-                if (showChapters) available.forEachIndexed { index, chapter ->
-                    Row(Modifier.fillMaxWidth().clickable(enabled = duration > 0 && playbackError == null) { chapterTick(); player.seekBook(chapter.startMs); position = chapter.startMs }.heightIn(min = 48.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${index + 1}. ${chapter.displayName(index)}", color = if (index == currentChapter) Accent else MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                        Text(audioTime(chapter.startMs), color = Muted, modifier = Modifier.padding(start = 12.dp))
-                    }
-                }
-            } else Text(if (chapters == null) "Reading chapters…" else "No supported embedded chapters found in this file.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 16.dp))
-            playbackError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp)) }
-        }
-        HorizontalDivider(color = Panel)
-        Column(Modifier.fillMaxWidth().background(Background).padding(horizontal = 24.dp, vertical = 12.dp).testTag("audio-controls"), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (currentChapter >= 0) Text(available[currentChapter].displayName(currentChapter), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 2.dp))
-        Box(Modifier.fillMaxWidth()) {
-            Slider(value = position.toFloat().coerceIn(0f, duration.toFloat().coerceAtLeast(1f)), onValueChange = {
-                scrubbing = true
-                val snap = snapAudioChapter(it.toLong(), duration, available)
-                if (snap != null && snap.startMs != snappedChapter) chapterTick()
-                snappedChapter = snap?.startMs
-                position = snap?.startMs ?: it.toLong()
-            }, onValueChangeFinished = {
-                player.seekBook(position)
-                prefs.edit().putLong("audio:${title.id}", position).putLong("audioModified:${title.id}", System.currentTimeMillis()).apply()
-                scrubbing = false
-                snappedChapter = null
-            }, modifier = Modifier.testTag("audio-timeline"), valueRange = 0f..duration.toFloat().coerceAtLeast(1f), enabled = duration > 0 && playbackError == null, colors = SliderDefaults.colors(inactiveTrackColor = Panel),
-                track = { state -> SliderDefaults.Track(sliderState = state, enabled = duration > 0 && playbackError == null,
-                    colors = SliderDefaults.colors(inactiveTrackColor = Panel), thumbTrackGapSize = 0.dp, drawStopIndicator = null) })
-            val markerColor = Accent
-            Canvas(Modifier.matchParentSize().padding(horizontal = 10.dp)) {
-                if (duration > 0) available.drop(1).forEach { chapter ->
-                    val x = size.width * chapter.startMs.toFloat() / duration
-                    drawLine(markerColor, androidx.compose.ui.geometry.Offset(x, size.height / 2 - 8.dp.toPx()), androidx.compose.ui.geometry.Offset(x, size.height / 2 + 8.dp.toPx()), strokeWidth = 2.dp.toPx())
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth()) {
-            Text(audioTime(position), color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-            Text(if (duration > 0) audioTime(duration) else "Loading…", color = Muted, fontSize = 12.sp)
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            SleepTimer(prefs)
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { speedOpen = true }, enabled = player.isCommandAvailable(androidx.media3.common.Player.COMMAND_SET_SPEED_AND_PITCH),
-                modifier = Modifier.testTag("playback-speed")) { Text("${speed.toString().removeSuffix(".0")}×", fontSize = 17.sp) }
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { player.seekBook((player.bookPosition - 15000).coerceAtLeast(0)) }, modifier = Modifier.size(56.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.Replay, "Back 15 seconds", Modifier.size(34.dp), tint = Accent)
-                    Text("15", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Accent, modifier = Modifier.padding(top = 3.dp))
-                }
-            }
-            FilledTonalIconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(width = 72.dp, height = 60.dp), shape = CircleShape, enabled = playbackError == null && duration > 0,
-                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Accent.copy(alpha = .18f), contentColor = Accent, disabledContainerColor = Panel, disabledContentColor = Muted)) {
-                Icon(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, if (playing) "Pause" else "Play", modifier = Modifier.size(34.dp))
-            }
-            IconButton(onClick = { player.seekBook((player.bookPosition + 30000).coerceAtMost(duration)) }, modifier = Modifier.size(56.dp)) { Icon(Icons.Outlined.Forward30, "Forward 30 seconds", Modifier.size(34.dp), tint = Accent) }
-        }
-        }
-        }
+        if (player == null) Column(Modifier.fillMaxSize().padding(24.dp)) {
+            Text(if (audioConnectionFailed) "Couldn’t connect to the audio player. Open the audiobook again to retry." else "Opening audio player…")
+            TextButton(onClick = close) { Text("Close player") }
+        } else AudioPlayerScreen(title, player, artwork, remember { getSharedPreferences("progress", MODE_PRIVATE) },
+            onStreamReady = { artworkRevision++ }, onClose = close) { modifier -> Cover(title, modifier, server, artworkRevision) }
     }
 }
 
-private fun audioTime(milliseconds: Long): String {
+internal fun audioTime(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
     return if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
     else "%d:%02d".format(seconds / 60, seconds % 60)
@@ -675,7 +594,8 @@ private fun audioTime(milliseconds: Long): String {
     }
 }
 
-@Composable internal fun Cover(title: Title, modifier: Modifier, server: BookServer, revision: Int = 0) {
+/** A title's artwork: the reader's own image, then art embedded in its files, then the server's cover. */
+@Composable internal fun rememberArtwork(title: Title, server: BookServer, revision: Int = 0): android.graphics.Bitmap? {
     val context = LocalContext.current
     val telegramRevision by TelegramLibrary.get(context).revision.collectAsState()
     val artwork by produceState<android.graphics.Bitmap?>(null, title.id, title.ebook, title.audio, title.coverUrl, revision, telegramRevision) { value = withContext(Dispatchers.IO) {
@@ -685,8 +605,13 @@ private fun audioTime(milliseconds: Long): String {
         val file = custom.takeIf { it.exists() } ?: embedded.takeIf { it.exists() } ?: server.cover(title)
         file?.let { android.graphics.BitmapFactory.decodeFile(it.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }) }
     } }
+    return artwork
+}
+
+@Composable internal fun Cover(title: Title, modifier: Modifier, server: BookServer, revision: Int = 0) {
+    val artwork = rememberArtwork(title, server, revision)
     val shape = RoundedCornerShape(5.dp)
-    if (artwork != null) Image(artwork!!.asImageBitmap(), "Cover of ${title.name}", modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer), contentScale = ContentScale.Fit)
+    if (artwork != null) Image(artwork.asImageBitmap(), "Cover of ${title.name}", modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer), contentScale = ContentScale.Fit)
     else Box(modifier.clip(shape).background(Brush.linearGradient(listOf(Color(0xFF45525B), Color(0xFF262E35)))).padding(12.dp)) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
             Icon(Icons.Outlined.AutoStories, null, tint = Accent, modifier = Modifier.size(22.dp))

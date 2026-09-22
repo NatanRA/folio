@@ -13,13 +13,19 @@ class AudioScrubbingTest {
         assertEquals("Chapter 4", AudioChapter("  ", 10000).displayName(3))
     }
 
-    @Test fun snapsNearMarkersInEitherDirectionButAllowsSeekingInsideChapters() {
-        assertEquals(chapters[1], snapAudioChapter(5900, 12000, chapters))
-        assertEquals(chapters[1], snapAudioChapter(6100, 12000, chapters))
-        assertEquals(chapters[2], snapAudioChapter(9000, 12000, chapters))
-        assertNull(snapAudioChapter(3000, 12000, chapters))
-        assertNull(snapAudioChapter(12000, 12000, chapters))
-        assertNull(snapAudioChapter(6000, 0, chapters))
-        assertNull(snapAudioChapter(6000, 12000, emptyList()))
+    @Test fun eachChapterRunsToTheNextAndTheLastToTheEndOfTheBook() {
+        assertEquals(6000, chapterLengthMs(chapters, 0, 12000))
+        assertEquals(3000, chapterLengthMs(chapters, 1, 12000))
+        assertEquals(3000, chapterLengthMs(chapters, 2, 12000))
+        assertEquals(0, chapterLengthMs(chapters, 3, 12000))
+        // Until the book's length is known the last chapter has none, rather than a negative one.
+        assertEquals(0, chapterLengthMs(chapters, 2, 0))
+    }
+
+    @Test fun timeLeftReadsInHoursAndMinutes() {
+        assertEquals("1h 13m", hoursAndMinutes((73 * 60 + 21) * 1000L))
+        assertEquals("4m", hoursAndMinutes(4 * 60_000L + 59_000))
+        assertEquals("2h 0m", hoursAndMinutes(120 * 60_000L))
+        assertEquals("0m", hoursAndMinutes(-5000))
     }
 }

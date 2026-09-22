@@ -45,6 +45,7 @@ Manual two-way approximate reading-position sync is available under Server → K
 - Import EPUB, PDF, CBZ and audio through the document picker; copy into private app storage for offline access.
 - Readium EPUB rendering with Home, Previous and Next controls, plus native PDF/comic viewing.
 - Media3 audio playback with seeking and separate persisted timestamp.
+- A full-screen player coloured from the cover, with chapters on their own timeline sheet and a mini player above the tab bar once it is closed.
 - Attach an audio file to an ebook title (or an ebook to an audio title).
 
 Embedded EPUB artwork is extracted when available, with typographic cover placeholders otherwise.

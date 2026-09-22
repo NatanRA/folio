@@ -95,30 +95,41 @@ class MediaPolishTest {
                 screenshot("artwork-dialog")
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 compose.onNodeWithTag("audio-format").performScrollTo().performClick()
-                compose.waitUntil(5000) { compose.onAllNodesWithText("Chapters (2)").fetchSemanticsNodes().isNotEmpty() }
-                compose.waitUntil(10000) { compose.onAllNodesWithText("0:00 / 0:12").fetchSemanticsNodes().isNotEmpty() }
+                // The player is a full-height sheet whose timeline covers the current chapter only.
+                compose.waitUntil(10000) { compose.onAllNodesWithText("First chapter").fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(10000) { compose.onAllNodesWithText("−0:06").fetchSemanticsNodes().isNotEmpty() }
                 val controlsBefore = compose.onNodeWithTag("audio-controls").fetchSemanticsNode().boundsInRoot
                 compose.onNodeWithContentDescription("Play").assertIsDisplayed().performClick()
                 compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Pause").fetchSemanticsNodes().isNotEmpty() }
                 compose.onNodeWithContentDescription("Pause").performClick()
                 compose.onNodeWithContentDescription("Play").assertIsDisplayed()
-                compose.onNodeWithTag("audio-timeline").performTouchInput {
-                    swipe(androidx.compose.ui.geometry.Offset(width * .25f, centerY), androidx.compose.ui.geometry.Offset(width * .506f, centerY), 500)
-                }
-                compose.onNodeWithText("0:00 / 0:12").assertDoesNotExist()
-                // A near-marker tap has an exact coordinate, independent of device drag slop.
-                compose.onNodeWithTag("audio-timeline").performTouchInput {
-                    click(androidx.compose.ui.geometry.Offset(width * .506f, centerY))
-                }
+                // Halfway along a six-second chapter is 0:03, whatever the rest of the book holds.
+                compose.onNodeWithTag("audio-timeline").performTouchInput { click(androidx.compose.ui.geometry.Offset(width * .5f, centerY)) }
+                compose.waitUntil(5000) { compose.onAllNodesWithText("0:03").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithText("−0:03").assertExists()
                 screenshot("audio-scrub-result")
-                compose.onNodeWithText("0:06 / 0:12").assertExists()
-                compose.onNodeWithText("2 / 2 · Second chapter").assertExists()
-                compose.onNodeWithText("Chapters (2)").performScrollTo().performClick()
-                compose.onNodeWithText("2. Second chapter").performScrollTo().performClick()
-                compose.onNodeWithText("2 / 2 · Second chapter").assertIsDisplayed()
+                compose.onNodeWithContentDescription("Chapters").performClick()
+                compose.onNodeWithText("2 chapters", substring = true).assertIsDisplayed()
+                screenshot("audiobook-chapters")
+                compose.onNodeWithText("Second chapter").performClick()
+                compose.waitUntil(5000) { compose.onAllNodesWithText("2 chapters", substring = true).fetchSemanticsNodes().isEmpty() }
+                compose.onNodeWithText("Second chapter").assertIsDisplayed()
+                compose.onNodeWithText("−0:06").assertExists()
                 assertEquals(controlsBefore, compose.onNodeWithTag("audio-controls").fetchSemanticsNode().boundsInRoot)
                 compose.onNodeWithContentDescription("Play").assertIsDisplayed()
-                screenshot("audiobook-chapters")
+                // Closing keeps the book in a mini player that sits above the tab bar, never over it.
+                compose.onNodeWithContentDescription("Close player").performClick()
+                compose.waitUntil(5000) { compose.onAllNodesWithTag("mini-player").fetchSemanticsNodes().isNotEmpty() }
+                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                compose.waitUntil(5000) { compose.onAllNodesWithTag("tab-bar").fetchSemanticsNodes().isNotEmpty() }
+                val mini = compose.onNodeWithTag("mini-player").fetchSemanticsNode().boundsInRoot
+                val tabs = compose.onNodeWithTag("tab-bar").fetchSemanticsNode().boundsInRoot
+                assertTrue("Mini player $mini must sit above the tab bar $tabs", mini.bottom <= tabs.top)
+                screenshot("mini-player")
+                compose.onNodeWithText("Home", useUnmergedTree = true).performClick()
+                compose.onNodeWithContentDescription("Open player", substring = true).performClick()
+                compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Close player").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithText("Second chapter").assertIsDisplayed()
             }
             assertTrue(context.getSharedPreferences("progress", 0).getLong("audio:${title.id}", 0) >= 6000)
         } finally {

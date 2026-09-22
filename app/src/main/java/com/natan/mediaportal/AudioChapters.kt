@@ -11,12 +11,17 @@ data class AudioChapter(val name: String, val startMs: Long) {
     fun displayName(index: Int): String = name.trim().takeUnless { it.isEmpty() || it.all(Char::isDigit) } ?: "Chapter ${index + 1}"
 }
 
-/** A small magnetic zone around chapter starts; the rest of the timeline remains freely seekable. */
-fun snapAudioChapter(positionMs: Long, durationMs: Long, chapters: List<AudioChapter>): AudioChapter? {
-    if (durationMs <= 0) return null
-    return chapters.filter { it.startMs in 0 until durationMs }
-        .minByOrNull { kotlin.math.abs(it.startMs - positionMs) }
-        ?.takeIf { kotlin.math.abs(it.startMs - positionMs) <= durationMs * 0.015 }
+/** How long chapter [index] runs: up to the next chapter, or to the end of the book for the last one. */
+fun chapterLengthMs(chapters: List<AudioChapter>, index: Int, bookDurationMs: Long): Long {
+    val start = chapters.getOrNull(index)?.startMs ?: return 0
+    val end = chapters.getOrNull(index + 1)?.startMs ?: bookDurationMs
+    return (end - start).coerceAtLeast(0)
+}
+
+/** A length in whole hours and minutes, as "1h 13m" or "4m", for time left in a book. */
+fun hoursAndMinutes(milliseconds: Long): String {
+    val minutes = milliseconds.coerceAtLeast(0) / 60000
+    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
 }
 
 /** Reads embedded chapters without loading the audio into memory. */
