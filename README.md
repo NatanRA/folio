@@ -122,6 +122,13 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
 
+### 0.9.3
+
+The audiobook player is rebuilt around chapters on both platforms: it fits on one screen, takes its
+colour from the cover, keeps every chapter on its own timeline and leaves a mini player above the
+tab bar when you close it. Android can save its library again after 0.9.2 broke imports and
+downloads for titles outside a series. [Full notes](docs/releases/v0.9.3.md).
+
 ### 0.9.2
 
 Audiobooks held on your library server are downloadable at last: Folio used to discard every audio
