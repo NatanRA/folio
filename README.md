@@ -125,6 +125,14 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
 
+### 0.9.5
+
+The page picker is a book you flip through: swipe to turn pages in 3D, flick to riffle, drag the page
+edges to jump, with haptics for each page and chapter, and a closed cover at page 1. The reader's
+controls follow the paper so they stay readable, accents are readable in light and dark mode, and there
+are new Sakura and Indigo papers and a Sakura accent. The iPhone book page fits without scrolling.
+[Full notes](docs/releases/v0.9.5.md).
+
 ### 0.9.4
 
 The player follows the app's light or dark theme and your accent colour, grows out of the mini
