@@ -4,7 +4,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
     namespace = "com.natan.mediaportal"
     compileSdk = 36
-    defaultConfig { applicationId = "com.natan.mediaportal"; minSdk = 26; targetSdk = 36; versionCode = 59; versionName = "0.9.5"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "com.natan.mediaportal"; minSdk = 26; targetSdk = 36; versionCode = 60; versionName = "0.9.6"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true }
     // Published APKs are signed with Folio's own release key rather than a machine's debug key, so an
     // update installs over the last one whichever machine built it. The key and its passwords live

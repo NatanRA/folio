@@ -125,6 +125,13 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
 
+### 0.9.6
+
+The player can be tapped or dragged at any moment while it grows out of the mini player or shrinks
+back, and it keeps the speed of your swipe. The progress bar moves smoothly and eases into skips
+instead of stepping or jumping back. On Android the player's title and close arrow are readable in
+dark mode. [Full notes](docs/releases/v0.9.6.md).
+
 ### 0.9.5
 
 The page picker is a book you flip through: swipe to turn pages in 3D, flick to riffle, drag the page
