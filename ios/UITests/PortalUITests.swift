@@ -329,6 +329,39 @@ final class PortalUITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: close); waitForExpectations(timeout: 40)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open player'")).firstMatch.waitForExistence(timeout: 5))
     }
+    /// Both file pickers on a book's page answer: "Edit artwork" replaces the cover with the chosen image, and
+    /// "Add audiobook" opens its own picker. Needs "Test Cover.png" copied into the app's Documents folder first.
+    func testBookPageFilePickersBothWork() throws {
+        let app = XCUIApplication(); app.launch()
+        app.tabBars.buttons["Library"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Northern Gardens'")).firstMatch
+        guard book.waitForExistence(timeout: 5) else { throw XCTSkip("Requires the simulator fixture library") }
+        book.tap()
+        let artwork = app.descendants(matching: .any)["book-artwork"]; XCTAssertTrue(artwork.waitForExistence(timeout: 5))
+        let before = artwork.value as? String
+        app.buttons["Edit artwork"].tap()
+        let file = try pickerFile("Test Cover", in: app)
+        file.tap()
+        expectation(for: NSPredicate(format: "value != %@", before ?? ""), evaluatedWith: artwork); waitForExpectations(timeout: 10)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "New artwork"; shot.lifetime = .keepAlways; add(shot)
+        // The e-book-only fixture offers "Add audiobook", whose picker lists audio instead of images.
+        app.buttons["Add audiobook"].tap()
+        XCTAssertTrue(app.buttons["Browse"].waitForExistence(timeout: 10), "Add audiobook should open the file picker")
+        app.buttons["Cancel"].exists ? app.buttons["Cancel"].tap() : app.buttons["Close"].firstMatch.tap()
+    }
+    /// Finds `name` in the open document picker, browsing to "On My iPhone" › Folio when it isn't in Recents.
+    private func pickerFile(_ name: String, in app: XCUIApplication) throws -> XCUIElement {
+        let browse = app.buttons["Browse"]; XCTAssertTrue(browse.waitForExistence(timeout: 10), "The file picker should open")
+        browse.tap()
+        let file = app.cells.containing(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        if file.waitForExistence(timeout: 3) { return file }
+        for place in ["On My iPhone", "Folio"] {
+            let item = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", place)).firstMatch
+            if item.waitForExistence(timeout: 3) { item.tap() }
+        }
+        guard file.waitForExistence(timeout: 5) else { throw XCTSkip("Copy \(name).png into the app's Documents folder first") }
+        return file
+    }
     /// Types a page into the page picker's "Go to page" prompt, which opens that page.
     private func goToPage(_ page: String, in app: XCUIApplication) {
         let header = app.buttons["pageNumberEntry"]; XCTAssertTrue(header.waitForExistence(timeout: 5)); header.tap()

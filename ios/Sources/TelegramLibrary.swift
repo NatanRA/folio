@@ -72,7 +72,8 @@ struct TelegramError: LocalizedError {
     private var files: [Int32: [String: Any]] = [:]
     private var downloadTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
-    private var artworkAttempted = Set<String>()
+    private var artworkTries: [String: Int] = [:]
+    private var artworkDone = Set<String>()
     private var refreshTask: Task<Void, Never>?
     private var receiveStarted = false
     private let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Telegram", isDirectory: true)
@@ -214,7 +215,7 @@ struct TelegramError: LocalizedError {
         return title.isEmpty ? "Library" : title
     }
     func select(_ id: Int64) async throws {
-        artworkTask?.cancel(); artworkTask = nil; artworkAttempted.removeAll()
+        artworkTask?.cancel(); artworkTask = nil; artworkTries.removeAll(); artworkDone.removeAll()
         chat = id; cursor = 0; entries = []; more = false; scanning = true
         defer { if chat == id { scanning = false } }
         selectedName = try await chatTitle(id)
@@ -251,60 +252,84 @@ struct TelegramError: LocalizedError {
             loadArtwork()
         }
     }
+    /// Loads the covers of streamed audiobooks in the background, one book at a time. A book whose read failed, on a poor
+    /// connection say, gets up to three attempts in all, a little apart, instead of waiting for the next launch.
     private func loadArtwork() {
         guard artworkTask == nil else { return }
         let owner = account
         artworkTask = Task {
             while !Task.isCancelled {
-                guard let entry = entries.first(where: { $0.audio && !artworkAttempted.contains($0.id) }), let library else { break }
+                let waiting = entries.filter { $0.audio && !artworkDone.contains($0.id) && artworkTries[$0.id, default: 0] < 3 }
+                guard let entry = waiting.min(by: { artworkTries[$0.id, default: 0] < artworkTries[$1.id, default: 0] }), let library else { break }
                 if activity != nil { try? await Task.sleep(nanoseconds: 500_000_000); continue }
-                artworkAttempted.insert(entry.id)
+                if artworkTries[entry.id, default: 0] > 0 { try? await Task.sleep(nanoseconds: 5_000_000_000); if Task.isCancelled { break } }
                 guard let book = library.books.first(where: { $0.telegramSource == "\(owner):\(entry.id)" }), book.cover == nil,
-                      let audio = book.audio, let url = URL(string: audio), url.scheme == "telegram" else { continue }
+                      let audio = book.audio, let url = URL(string: audio), url.scheme == "telegram" else { artworkDone.insert(entry.id); continue }
                 do {
-                    var artwork: Data?
-                    if entry.thumbnail != 0 {
-                        do {
-                        let info = try await request("getFile", ["file_id": entry.thumbnail])
-                        let size = max((info["size"] as? NSNumber)?.int64Value ?? 0, (info["expected_size"] as? NSNumber)?.int64Value ?? 0)
-                        if size > 0 && size <= 2 * 1024 * 1024 {
-                            let thumbnail = TelegramFile(chat: entry.chat, message: entry.message, file: entry.thumbnail, name: "cover.jpg", size: size)
-                            var data = Data()
-                            while data.count < size {
-                                try Task.checkCancellation()
-                                data.append(try await readRange(thumbnail, offset: Int64(data.count), length: min(256 * 1024, Int(size) - data.count), background: true))
-                            }
-                            if UIImage(data: data) != nil { artwork = data }
-                        }
-                        } catch { try Task.checkCancellation() /* Fall back to embedded artwork. */ }
-                    }
-                    if artwork == nil {
-                        var budget = 8 * 1024 * 1024
-                        let deadline = Date().addingTimeInterval(20)
-                        let resource = TelegramAudioResource(url: url, resolve: { _ in entry }, read: { [weak self] file, offset, length in
-                            guard let self, budget >= length, Date() < deadline else { throw PortalError.message("Metadata read limit") }
-                            budget -= length
-                            return try await self.readRange(file, offset: offset, length: length, background: true)
-                        })
-                        let timeout = Task { try? await Task.sleep(nanoseconds: 20_000_000_000); if !Task.isCancelled { resource.asset.cancelLoading(); resource.cancel() } }
-                        defer { timeout.cancel(); resource.asset.cancelLoading(); resource.cancel() }
-                        let metadata = try await resource.asset.load(.commonMetadata)
-                        for item in metadata where item.commonKey == .commonKeyArtwork {
-                            artwork = try? await item.load(.dataValue)
-                            if artwork != nil { break }
-                        }
-                    }
+                    let artwork = try await artwork(for: entry, url: url)
                     try Task.checkCancellation()
-                    if let artwork, let image = UIImage(data: artwork), let data = image.jpegData(compressionQuality: 0.9),
-                       library.books.first(where: { $0.id == book.id })?.cover == nil {
-                        let name = "\(book.id).jpg"
-                        try data.write(to: library.file(name), options: .atomic)
-                        library.update(book.id) { $0.cover = name }
-                    }
-                } catch { /* Missing artwork can be retried on refresh. */ }
+                    // A picture that won't decode would only fail again, so it isn't retried.
+                    if let artwork, library.books.first(where: { $0.id == book.id })?.cover == nil { try? await library.setCover(artwork, id: book.id) }
+                    artworkDone.insert(entry.id)
+                } catch {
+                    if Task.isCancelled { break }
+                    artworkTries[entry.id, default: 0] += 1
+                }
             }
             if !Task.isCancelled { artworkTask = nil }
         }
+    }
+    /// A streamed audiobook's cover: the full-size picture embedded in the file, found with a few small reads; else
+    /// Telegram's thumbnail, at most a few hundred pixels; else, for formats the embedded reader doesn't know, whatever
+    /// AVFoundation finds in the file's metadata.
+    private func artwork(for entry: TelegramFile, url: URL) async throws -> Data? {
+        let read: EmbeddedArtwork.Read = { [weak self] offset, length in
+            guard let self else { throw CancellationError() }
+            var data = Data()
+            while data.count < length {
+                try Task.checkCancellation()
+                let chunk = try await self.readRange(entry, offset: offset + Int64(data.count), length: min(512 * 1024, length - data.count), background: true)
+                if chunk.isEmpty { break }
+                data.append(chunk)
+            }
+            return data
+        }
+        var embedded: Data?, known = true
+        do { embedded = try await EmbeddedArtwork.read(size: entry.size, read) } catch is EmbeddedArtwork.Unsupported { known = false }
+        if let embedded, UIImage(data: embedded) != nil { return embedded }
+        if let thumbnail = try await thumbnail(for: entry) { return thumbnail }
+        // Running out of budget or time would only happen again, so a failed fallback counts as no cover.
+        return known ? nil : (try? await metadataArtwork(for: entry, url: url)) ?? nil
+    }
+    private func thumbnail(for entry: TelegramFile) async throws -> Data? {
+        guard entry.thumbnail != 0 else { return nil }
+        do {
+            let info = try await request("getFile", ["file_id": entry.thumbnail])
+            let size = max((info["size"] as? NSNumber)?.int64Value ?? 0, (info["expected_size"] as? NSNumber)?.int64Value ?? 0)
+            guard size > 0 && size <= 2 * 1024 * 1024 else { return nil }
+            let thumbnail = TelegramFile(chat: entry.chat, message: entry.message, file: entry.thumbnail, name: "cover.jpg", size: size)
+            var data = Data()
+            while data.count < size {
+                try Task.checkCancellation()
+                data.append(try await readRange(thumbnail, offset: Int64(data.count), length: min(256 * 1024, Int(size) - data.count), background: true))
+            }
+            return UIImage(data: data) != nil ? data : nil
+        } catch { try Task.checkCancellation(); return nil }
+    }
+    private func metadataArtwork(for entry: TelegramFile, url: URL) async throws -> Data? {
+        var budget = 24 * 1024 * 1024
+        let deadline = Date().addingTimeInterval(45)
+        let resource = TelegramAudioResource(url: url, resolve: { _ in entry }, read: { [weak self] file, offset, length in
+            guard let self, budget >= length, Date() < deadline else { throw PortalError.message("Metadata read limit") }
+            budget -= length
+            return try await self.readRange(file, offset: offset, length: length, background: true)
+        })
+        let timeout = Task { try? await Task.sleep(nanoseconds: 45_000_000_000); if !Task.isCancelled { resource.asset.cancelLoading(); resource.cancel() } }
+        defer { timeout.cancel(); resource.asset.cancelLoading(); resource.cancel() }
+        for item in try await resource.asset.load(.commonMetadata) where item.commonKey == .commonKeyArtwork {
+            if let data = try? await item.load(.dataValue) { return data }
+        }
+        return nil
     }
     func resolve(_ url: URL) async throws -> TelegramFile {
         // Starting without a pair would stall halfway through sign-in; ask for the one-time setup instead.

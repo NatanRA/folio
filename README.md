@@ -48,7 +48,8 @@ Manual two-way approximate reading-position sync is available under Server → K
 - Five reading papers: white, sepia, sakura (cherry-blossom pink), night and indigo. The reader's buttons and page numbers follow the paper, light on light pages and dark on dark ones, whatever the app's own appearance.
 - Aquamarine, blue, lilac, peach and sakura accents, each with a deeper shade for light mode so accent text stays readable.
 - Media3 audio playback with seeking and separate persisted timestamp.
-- A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet. One spring drives the whole morph, so it follows a dragging finger and a tap or drag can catch it mid-way and turn it around; nothing waits for an animation to finish. The progress bar glides at the screen's frame rate, and skipping eases it straight to the new place without flicking back.
+- A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet. One spring drives the whole morph, so it follows a dragging finger and a tap or drag can catch it mid-way and turn it around; nothing waits for an animation to finish. While it moves it asks for the display's highest refresh rate, and playback saves its position off the main thread, so nothing stalls a frame. The progress bar glides at the screen's frame rate, and skipping eases it straight to the new place without flicking back.
+- A streamed Telegram audiobook's embedded cover is found with a few small reads of the file (about 55 KB for a 20-hour M4B), so covers load in the background instead of waiting for the book to be played.
 - Attach an audio file to an ebook title (or an ebook to an audio title).
 
 Embedded EPUB artwork is extracted when available, with typographic cover placeholders otherwise.
@@ -124,6 +125,15 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
+
+### 0.9.7
+
+The player's animation runs at the screen's full rate on iPhone, up to 120 Hz, and no longer stalls
+twice a second while audio plays; Android saves positions off the main thread and asks for its
+highest refresh rate while the card moves. Streamed Telegram audiobooks show their covers without
+being played first. On iPhone, choosing a cover from Files works, including pictures in iCloud Drive
+and HEIC, and "Add e-book" and "Add audiobook" on a book's page work again.
+[Full notes](docs/releases/v0.9.7.md).
 
 ### 0.9.6
 

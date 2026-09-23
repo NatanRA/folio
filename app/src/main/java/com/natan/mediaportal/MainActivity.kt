@@ -224,16 +224,22 @@ class MainActivity : ComponentActivity() {
                 var sortMenu by remember { mutableStateOf(false) }
                 fun closeSearch() { searching = false; query = ""; freeBooks = false; focus.clearFocus() }
                 var listening by remember(homeReturn) { mutableStateOf<Title?>(if (homeReturn == 0 && intent.getBooleanExtra("openAudio", false)) local.find { it.id == getSharedPreferences("progress", MODE_PRIVATE).getString("activeAudio", null) } else null) }
-                // The page under the player stays composed, so closing the player refreshes the progress it shows.
-                LaunchedEffect(listening) { if (listening != null) connectAudio() else progressVersion++ }
+                LaunchedEffect(listening) { if (listening != null) connectAudio() }
                 // One spring carries the player between the mini player and full screen; whatever sets or clears
                 // `listening` (a tap, Back, the close arrow, a search result) turns it around from wherever it is.
                 val morph = rememberPlayerMorph()
                 LaunchedEffect(listening) { morph.retarget(open = listening != null) }
+                val cardShown = listening != null || morph.active
+                // The page under the player stays composed, so it refreshes the progress it shows once the card has
+                // shut: refreshed as the card starts to shrink, the whole library recomposed in the middle of the motion.
+                LaunchedEffect(cardShown) { if (!cardShown) progressVersion++ }
                 val nowPlaying = rememberNowPlaying(audioController)
-                val mini = nowPlaying?.let { playing -> local.find { it.id == playing.titleId }?.let { playing to it } }
+                // Only which book the player holds is read here. Playing, pausing and the chapter line are read inside
+                // the mini player, so a player report redraws it alone rather than recomposing the whole app.
+                val playingId by remember(nowPlaying) { derivedStateOf { nowPlaying.value?.titleId } }
+                val miniTitle = playingId?.let { id -> local.find { it.id == id } }
                 // Pages pad their bottom by this much more while the mini player floats over them.
-                val miniClearance = if (mini != null) 72.dp else 0.dp
+                val miniClearance = if (miniTitle != null) 72.dp else 0.dp
                 LaunchedEffect(pendingNavigation) {
                     val destination = pendingNavigation ?: return@LaunchedEffect
                     selected = null
@@ -356,15 +362,9 @@ class MainActivity : ComponentActivity() {
                             if (selected == null) GlassTabBar(tabItems, tab, { tab = it; closeSearch() }, hazeState, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).blur(blur))
                             // The mini player floats 8dp above the 64dp tab bar, or at the bottom where there is no tab bar.
                             // It stays composed under the full player, fading as the card grows out of it.
-                            mini?.let { (playing, title) ->
-                                val artwork = rememberArtwork(title, server, artworkRevision)
-                                DisposableEffect(Unit) { morph.miniPlaced = true; onDispose { morph.miniPlaced = false } }
-                                MiniPlayer(title, playing.detail, playing.playing, artwork, hazeState,
-                                    onOpen = { listening = title },
-                                    onToggle = { audioController?.let { player -> if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } } },
-                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (selected == null) 84.dp else 12.dp).blur(blur).miniPlayerMorph(morph),
-                                    capsuleModifier = Modifier.miniCapsuleBounds(morph),
-                                    thumbnailModifier = Modifier.miniCoverMorph(morph, flying = artwork != null))
+                            miniTitle?.let { title ->
+                                MiniPlayerSlot(title, nowPlaying, morph, hazeState, onOpen = { listening = title },
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (selected == null) 84.dp else 12.dp).blur(blur))
                             }
                             // Search floats over the content on a translucent, blurred layer so nothing behind it moves.
                             androidx.compose.animation.AnimatedVisibility(visible = searching, enter = fadeIn(tween(220)) + scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = .98f), exit = fadeOut(tween(170)) + scaleOut(tween(170), targetScale = .98f)) {
@@ -394,8 +394,8 @@ class MainActivity : ComponentActivity() {
                 // the shrinking card brings it back. At rest shut, it leaves the composition and every touch below.
                 var shownTitle by remember { mutableStateOf<Title?>(null) }
                 LaunchedEffect(listening) { if (listening != null) shownTitle = listening }
-                if (listening != null || morph.active) (listening ?: shownTitle)?.let { title ->
-                    val artwork = rememberArtwork(title, server, artworkRevision)
+                if (cardShown) (listening ?: shownTitle)?.let { title ->
+                    val artwork = rememberArtwork(title, server, artworkRevision, longSide = PlayerCoverSize)
                     val cover = remember(artwork) { artwork?.asImageBitmap() }
                     PlayerCard(morph, Background, Panel, cover, closing = listening == null,
                         onReopen = { listening = title }, onRelease = { open -> listening = if (open) title else null }) { coverModifier ->
@@ -493,7 +493,7 @@ class MainActivity : ComponentActivity() {
         BoxWithConstraints(Modifier.fillMaxSize()) {
         val coverWidth = if (maxHeight < 650.dp) 124.dp else 170.dp
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).padding(bottom = bottomClearance)) {
-            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Panel, Background))).padding(20.dp), contentAlignment = Alignment.Center) { Cover(title, Modifier.width(coverWidth).aspectRatio(.67f), server, artworkRevision) }
+            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Panel, Background))).padding(20.dp), contentAlignment = Alignment.Center) { Cover(title, Modifier.width(coverWidth).aspectRatio(.67f), server, artworkRevision, longSide = 260.dp) }
             TextButton(onClick = { artworkMenu = title }, enabled = busy == null, modifier = Modifier.align(Alignment.CenterHorizontally)) { Icon(Icons.Outlined.Image, null); Spacer(Modifier.width(8.dp)); Text("Edit artwork") }
             Text(title.name, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp))
             Text(title.author, color = Muted, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
@@ -569,6 +569,22 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun choose(audio: Boolean, title: String?) { audioImport = audio; linkTo = title; pendingImport = audio }
+    /**
+     * The mini player for [title], in a scope of its own: the play state and chapter line it shows change with every
+     * player report, and reading them here redraws the capsule without recomposing the page around it.
+     */
+    @Composable private fun MiniPlayerSlot(title: Title, nowPlaying: State<NowPlaying?>, morph: PlayerMorph, hazeState: HazeState, onOpen: () -> Unit, modifier: Modifier) {
+        val playing = nowPlaying.value ?: return
+        val artwork = rememberArtwork(title, server, artworkRevision, longSide = 36.dp)
+        // The full player's cover is decoded ahead, so the first opening has it to fly from its first frame.
+        rememberArtwork(title, server, artworkRevision, longSide = PlayerCoverSize)
+        DisposableEffect(Unit) { morph.miniPlaced = true; onDispose { morph.miniPlaced = false } }
+        MiniPlayer(title, playing.detail, playing.playing, artwork, hazeState, onOpen = onOpen,
+            onToggle = { audioController?.let { player -> if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } } },
+            modifier = modifier.miniPlayerMorph(morph),
+            capsuleModifier = Modifier.miniCapsuleBounds(morph),
+            thumbnailModifier = Modifier.miniCoverMorph(morph, flying = artwork != null))
+    }
     /** Hands the shared playback connection to the player screen, loading this title into it first. */
     @Composable private fun AudioPlayer(title: Title, artwork: android.graphics.Bitmap?, coverModifier: Modifier = Modifier, close: () -> Unit) {
         val player = audioController
@@ -607,24 +623,33 @@ internal fun audioTime(milliseconds: Long): String {
     }
 }
 
-/** A title's artwork: the reader's own image, then art embedded in its files, then the server's cover. */
-@Composable internal fun rememberArtwork(title: Title, server: BookServer, revision: Int = 0): android.graphics.Bitmap? {
+/** How large the full player's cover can be drawn, and so the size it and the cover flying into it are decoded at. */
+internal val PlayerCoverSize = 520.dp
+
+/**
+ * A title's artwork: the reader's own image, then art embedded in its files, then the server's cover. It is decoded
+ * for a place about [longSide] tall or wide, so a thumbnail doesn't hold a full-size cover, and a cover decoded before
+ * is there from the first frame.
+ */
+@Composable internal fun rememberArtwork(title: Title, server: BookServer, revision: Int = 0, longSide: Dp = 200.dp): android.graphics.Bitmap? {
     val context = LocalContext.current
+    val size = with(androidx.compose.ui.platform.LocalDensity.current) { longSide.roundToPx() }
     val telegramRevision by TelegramLibrary.get(context).revision.collectAsState()
-    val artwork by produceState<android.graphics.Bitmap?>(null, title.id, title.ebook, title.audio, title.coverUrl, revision, telegramRevision) { value = withContext(Dispatchers.IO) {
+    val artwork by produceState(CoverCache.peek(title.id, size), title.id, title.ebook, title.audio, title.coverUrl, revision, telegramRevision, size) { value = withContext(Dispatchers.IO) {
         val custom = java.io.File(context.filesDir, "${title.id}-custom.jpg")
         val embedded = java.io.File(context.filesDir, "${title.id}.jpg")
         if (!custom.exists() && !embedded.exists() && title.audio != null && !title.streaming) Artwork.fromAudio(java.io.File(context.filesDir, title.audio), embedded)
         val file = custom.takeIf { it.exists() } ?: embedded.takeIf { it.exists() } ?: server.cover(title)
-        file?.let { android.graphics.BitmapFactory.decodeFile(it.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }) }
+        file?.let { CoverCache.load(title.id, it, size) }
     } }
     return artwork
 }
 
-@Composable internal fun Cover(title: Title, modifier: Modifier, server: BookServer, revision: Int = 0) {
-    val artwork = rememberArtwork(title, server, revision)
+@Composable internal fun Cover(title: Title, modifier: Modifier, server: BookServer, revision: Int = 0, longSide: Dp = 200.dp) {
+    val artwork = rememberArtwork(title, server, revision, longSide)
     val shape = RoundedCornerShape(5.dp)
-    if (artwork != null) Image(artwork.asImageBitmap(), "Cover of ${title.name}", modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer), contentScale = ContentScale.Fit)
+    val image = remember(artwork) { artwork?.asImageBitmap() }
+    if (image != null) Image(image, "Cover of ${title.name}", modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer), contentScale = ContentScale.Fit)
     else Box(modifier.clip(shape).background(Brush.linearGradient(listOf(Color(0xFF45525B), Color(0xFF262E35)))).padding(12.dp)) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
             Icon(Icons.Outlined.AutoStories, null, tint = Accent, modifier = Modifier.size(22.dp))

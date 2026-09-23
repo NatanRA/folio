@@ -59,6 +59,20 @@ enum PortalError: LocalizedError {
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
 }
 
+/// Runs `body` on a file chosen in Files once its provider has made it readable. A file kept in iCloud Drive or another
+/// provider can be a placeholder until it is read through a file coordinator, which downloads it first; read directly,
+/// such a file can come back empty, the likely reason a picture picked on a phone changed nothing.
+func readPickedFile<T>(_ url: URL, _ body: @escaping @Sendable (URL) throws -> T) async throws -> T {
+    try await Task.detached(priority: .userInitiated) {
+        let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
+        var coordination: NSError?, result: Result<T, Error>?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: .withoutChanges, error: &coordination) { local in result = Result { try body(local) } }
+        if let coordination { throw coordination }
+        guard let result else { throw PortalError.message("The file could not be read.") }
+        return try result.get()
+    }.value
+}
+
 @MainActor final class BookEngine {
     let http = DefaultHTTPClient()
     lazy var assets = AssetRetriever(httpClient: http)
@@ -116,7 +130,7 @@ enum PortalError: LocalizedError {
         entry.telegramSource = telegramSource ?? entry.telegramSource
         let name = UUID().uuidString + "." + ext
         let destination = file(name)
-        try FileManager.default.copyItem(at: url, to: destination)
+        try await readPickedFile(url) { try FileManager.default.copyItem(at: $0, to: destination) }
         var artwork: Data?
         do {
             if audio {
@@ -144,22 +158,45 @@ enum PortalError: LocalizedError {
                 artwork = (try? await publication.cover().get())?.jpegData(compressionQuality: 0.85)
                 entry.ebook = name; entry.locator = nil; entry.readingProgress = 0; entry.finished = false
             }
-            if entry.cover == nil, let artwork, let image = UIImage(data: artwork), let data = image.jpegData(compressionQuality: 0.85) {
+            if entry.cover == nil, let artwork, let data = await Task.detached(priority: .userInitiated, operation: { CoverImages.storedJPEG(artwork) }).value {
                 let cover = UUID().uuidString + ".jpg"; try data.write(to: file(cover), options: .atomic); entry.cover = cover
             }
             let old = books
             if entry.addedAt == nil { entry.addedAt = Date() }
-            if let i = books.firstIndex(where: { $0.id == entry.id }) { books[i] = entry } else { books.append(entry) }
+            if let i = books.firstIndex(where: { $0.id == entry.id }) {
+                // Importing took a while. What changed on the book meanwhile, a cover picked or a position saved, stays;
+                // only what this import brings is added.
+                var current = books[i]
+                if audio { current.audio = entry.audio; current.author = entry.author }
+                else { current.ebook = entry.ebook; current.locator = entry.locator; current.fixedPage = entry.fixedPage; current.readingProgress = entry.readingProgress; current.finished = entry.finished }
+                current.telegramSource = entry.telegramSource
+                if current.cover == nil { current.cover = entry.cover }
+                else if let made = entry.cover, made != current.cover, !books.contains(where: { $0.cover == made }) { try? FileManager.default.removeItem(at: file(made)) }
+                books[i] = current
+            } else { books.append(entry) }
             do { try save() } catch { books = old; throw error }
             return entry.id
         } catch { try? FileManager.default.removeItem(at: destination); throw error }
     }
-    func replaceCover(_ url: URL, id: String) throws {
-        let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
-        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) < 20_000_000,
-              let image = UIImage(contentsOfFile: url.path), let data = image.jpegData(compressionQuality: 0.85) else { throw PortalError.message("Choose a JPG or PNG image under 20 MB.") }
-        let name = UUID().uuidString + ".jpg"; try data.write(to: file(name), options: .atomic)
+    /// Replaces a book's cover with a picture chosen in Files.
+    func replaceCover(_ url: URL, id: String) async throws {
+        let data = try await readPickedFile(url) { local in
+            guard (try local.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 20_000_000 else { throw PortalError.message("Choose a picture under 20 MB.") }
+            return try Data(contentsOf: local)
+        }
+        try await setCover(data, id: id)
+    }
+    /// Stores image bytes as the book's cover and removes the file it replaces. The picture is scaled and re-encoded off
+    /// the main thread, and every cover gets a new file name, so nothing drawn from the old one can go stale.
+    func setCover(_ data: Data, id: String) async throws {
+        guard let jpeg = await Task.detached(priority: .userInitiated, operation: { CoverImages.storedJPEG(data) }).value else {
+            throw PortalError.message("This picture couldn't be opened. Choose a JPG, PNG or HEIC image.")
+        }
+        let name = UUID().uuidString + ".jpg"
+        try jpeg.write(to: file(name), options: .atomic)
+        let old = book(id)?.cover
         update(id) { $0.cover = name }
+        if let old, !books.contains(where: { $0.cover == old }) { try? FileManager.default.removeItem(at: file(old)) }
     }
     func merge(_ remote: [MediaBook]) throws {
         let old = books

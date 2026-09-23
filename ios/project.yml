@@ -14,8 +14,8 @@ settings:
   base:
     SWIFT_VERSION: '5.0'
     CODE_SIGNING_ALLOWED: NO
-    MARKETING_VERSION: '0.9.6'
-    CURRENT_PROJECT_VERSION: 19
+    MARKETING_VERSION: '0.9.7'
+    CURRENT_PROJECT_VERSION: 20
 targets:
   MediaPortal:
     type: application
@@ -29,6 +29,8 @@ targets:
         CFBundleDisplayName: Folio
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
+        # Without it, iPhones cap the app's own animations at 60 Hz even on 120 Hz screens.
+        CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
           - CFBundleURLName: com.natan.mediaportal.navigation

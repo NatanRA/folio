@@ -91,8 +91,8 @@ enum PositionProtocol {
         SecureStore.read("notes-sync").flatMap { try? JSONDecoder().decode(ServerAccount.self, from: $0) }
     }
 
-    /// Playback saves a position twice a second. At most one exchange every thirty seconds turns
-    /// that into traffic; pause, stop and backgrounding go through `exchange` instead.
+    /// Playback saves a position every fifteen seconds. At most one exchange every thirty seconds
+    /// turns that into traffic; pause, stop and backgrounding go through `exchange` instead.
     func pushWhileListening(library: Library) {
         guard Date().timeIntervalSince(last) >= 30 else { return }
         exchange(library: library)

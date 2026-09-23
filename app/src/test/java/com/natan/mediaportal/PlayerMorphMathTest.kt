@@ -54,4 +54,15 @@ class PlayerMorphMathTest {
         assertTrue(settlesOpen(.3f, -801f))         // an upward fling opens from anywhere
         assertFalse(settlesOpen(.3f, -500f))
     }
+
+    @Test fun beforeAndroid15TheMorphPicksTheFastestModeAtTheSameResolution() {
+        val modes = listOf(DisplayModeChoice(1, 1080, 2400, 60f), DisplayModeChoice(2, 1080, 2400, 120f),
+            DisplayModeChoice(3, 1440, 3200, 144f), DisplayModeChoice(4, 1080, 2400, 90f))
+        // 144 Hz exists only at another resolution, which would resize the window mid-motion.
+        assertEquals(2, fastestDisplayMode(modes, 1080, 2400))
+        assertEquals(3, fastestDisplayMode(modes + DisplayModeChoice(5, 1440, 3200, 60f), 1440, 3200))
+        // With one rate on offer there is nothing to ask for, and the system keeps choosing.
+        assertEquals(null, fastestDisplayMode(listOf(DisplayModeChoice(1, 1080, 2400, 60f)), 1080, 2400))
+        assertEquals(null, fastestDisplayMode(modes, 720, 1600))
+    }
 }

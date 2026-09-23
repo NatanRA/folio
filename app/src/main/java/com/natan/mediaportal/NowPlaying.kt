@@ -122,8 +122,9 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
         IconButton(onClick = onClose, modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainer)) { Icon(Icons.Outlined.KeyboardArrowDown, "Close player") }
         Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp), contentAlignment = Alignment.Center) {
             val shape = RoundedCornerShape(14.dp)
-            if (artwork != null) Image(artwork.asImageBitmap(), null, coverModifier.aspectRatio(artwork.width.toFloat() / artwork.height, matchHeightConstraintsFirst = true)
-                .shadow(16.dp, shape).clip(shape), contentScale = ContentScale.Crop)
+            val image = remember(artwork) { artwork?.asImageBitmap() }
+            if (artwork != null && image != null) Image(image, null, coverModifier.aspectRatio(artwork.width.toFloat() / artwork.height, matchHeightConstraintsFirst = true)
+                .shadow(16.dp, shape).clip(shape).testTag("player-cover"), contentScale = ContentScale.Crop)
             else fallbackCover(coverModifier.aspectRatio(.67f, matchHeightConstraintsFirst = true))
         }
         Text(title.name, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("player-title"))
@@ -318,12 +319,13 @@ private class PlaybackMotionState(private val now: () -> Long = SystemClock::upt
 /** What the playback service holds, for the mini player: which title, whether it plays, and the chapter it is in. */
 internal data class NowPlaying(val titleId: String, val playing: Boolean, val detail: String)
 
+/** Kept as a state rather than read here, so only what shows the play state and chapter recomposes when they change. */
 @Composable
-internal fun rememberNowPlaying(player: Player?): NowPlaying? {
-    var state by remember(player) { mutableStateOf<NowPlaying?>(null) }
+internal fun rememberNowPlaying(player: Player?): State<NowPlaying?> {
+    val state = remember(player) { mutableStateOf<NowPlaying?>(null) }
     DisposableEffect(player) {
         if (player == null) return@DisposableEffect onDispose { }
-        fun read() { state = player.currentMediaItem?.let { NowPlaying(it.mediaId, player.isPlaying, it.mediaMetadata.artist?.toString().orEmpty()) } }
+        fun read() { state.value = player.currentMediaItem?.let { NowPlaying(it.mediaId, player.isPlaying, it.mediaMetadata.artist?.toString().orEmpty()) } }
         val listener = object : Player.Listener { override fun onEvents(player: Player, events: Player.Events) { read() } }
         read(); player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -348,7 +350,8 @@ internal fun MiniPlayer(title: Title, detail: String, playing: Boolean, artwork:
         Row(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onOpen).padding(start = 10.dp)
             .semantics(mergeDescendants = true) { contentDescription = "Open player, ${title.name}" }, verticalAlignment = Alignment.CenterVertically) {
             Box(thumbnailModifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(accent.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
-                if (artwork != null) Image(artwork.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                val image = remember(artwork) { artwork?.asImageBitmap() }
+                if (image != null) Image(image, null, Modifier.fillMaxSize().testTag("mini-cover"), contentScale = ContentScale.Crop)
                 else Icon(Icons.Outlined.Headphones, null, tint = accent, modifier = Modifier.size(20.dp))
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {

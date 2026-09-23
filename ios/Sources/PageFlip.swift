@@ -321,6 +321,7 @@ struct PageFlipSheet: View {
     let here: Int
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     @StateObject private var snippets = PageSnippets()
     @State private var haptics = PageHaptics()
     @State private var chapters: [BookChapter] = []
@@ -369,9 +370,10 @@ struct PageFlipSheet: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text("Enter a page from 1 to \(total).") }
         .task {
-            if let cover = entry?.cover, let library = model.library { artwork = UIImage(contentsOfFile: library.file(cover).path) }
             chapters = PageFlipMath.chapters(toc: flatten(model.contents), positionHrefs: model.positions.map { $0.href.string })
             page = min(max(here, 1), total); settle()
+            // The cover last, so the book opens at the reader's page at once rather than after the picture decodes.
+            if let cover = entry?.cover, let library = model.library { artwork = await CoverImages.shared.load(library.file(cover), points: 600, scale: displayScale) }
         }
         .task(id: page) {
             // Read the first words only once the pages stop moving past.

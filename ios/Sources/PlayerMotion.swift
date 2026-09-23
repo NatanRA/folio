@@ -39,6 +39,7 @@ struct PlayerCard: View {
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var audio: AudioPlayer
     @State private var cover: UIImage?
+    @Environment(\.displayScale) private var displayScale
     @State private var coverInPlayer: CGRect?
     @State private var dragFrom: Double?
 
@@ -51,12 +52,19 @@ struct PlayerCard: View {
             }
             .ignoresSafeArea()
         }
-        .task(id: bookID) { cover = library.book(bookID)?.cover.flatMap { UIImage(contentsOfFile: library.file($0).path) } }
+        .task(id: coverName) { cover = nil; if let coverName { cover = await CoverImages.shared.load(library.file(coverName), points: Self.coverPoints, scale: displayScale) } }
     }
+
+    /// The size the player's cover is decoded at, shared with the mini player so the card finds it already decoded.
+    static let coverPoints: CGFloat = 400
+    private var coverName: String? { library.book(bookID)?.cover }
+    /// The cover as drawn this frame: from memory at once when the mini player decoded it, so the first frame has it.
+    private var shownCover: UIImage? { cover ?? coverName.flatMap { CoverImages.shared.cached(library.file($0), points: Self.coverPoints, scale: displayScale) } }
 
     private func card(full: CGRect, insets: EdgeInsets) -> some View {
             let from = start ?? full.offsetBy(dx: 0, dy: full.height)
             let book = library.book(bookID)
+            let cover = shownCover
             return PlayerScreen(id: bookID, hidesArtwork: cover != nil, onArtworkFrame: { coverInPlayer = $0 })
                 .environment(\.closePlayer, close)
                 .padding(.top, insets.top).padding(.bottom, insets.bottom)
@@ -131,10 +139,21 @@ private struct PlayerMorph<CardGesture: Gesture>: ViewModifier, Animatable {
                 // Rising from below, the cover rides along with the rest of the player.
                 ?? CGRect(x: frame.minX + target.minX * scale, y: frame.minY + target.minY * scale, width: target.width * scale, height: target.height * scale)
         }
+            // A new card learns where its cover goes a frame after it's drawn; until then the cover stays on the thumbnail.
+            ?? (progress < 0.05 ? startCover : nil)
+        let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
         return ZStack(alignment: .topLeading) {
+            // The shadows are cast by plain shapes behind the card and the cover. Cast by the card itself, the whole
+            // player had to be drawn off screen again every frame just to find its outline.
+            // It fills in with the card's own background, so the small card stays frosted over what's behind it.
+            shape.fill(Color(uiColor: .systemBackground).opacity(min(1, progress / 0.2)))
+                .frame(width: frame.width, height: frame.height)
+                .shadow(color: .black.opacity(0.22 * sin(progress * .pi)), radius: 24, y: 6)
+                .position(x: frame.midX, y: frame.midY)
             ZStack(alignment: .topLeading) {
-                // Frosted like the mini player while small, the app's background once open.
-                Rectangle().fill(.regularMaterial)
+                // Frosted like the mini player while small, the app's background once open. The blur is left out once
+                // the background covers it, rather than blurring what's behind the card every frame for nothing.
+                if progress < 0.2 { Rectangle().fill(.regularMaterial) }
                 Color(uiColor: .systemBackground).opacity(min(1, progress / 0.2))
                 content
                     .frame(width: full.width, height: full.height)
@@ -142,25 +161,29 @@ private struct PlayerMorph<CardGesture: Gesture>: ViewModifier, Animatable {
                     .opacity(min(1, max(0, (progress - 0.12) / 0.45)))
                     // The player's own controls work as soon as they are big enough to aim at, even while growing.
                     .allowsHitTesting(isOpen && progress > 0.5)
-                miniRow.frame(width: frame.width, height: start.height).opacity(1 - min(1, progress / 0.3))
+                if progress < 0.3 { miniRow.frame(width: frame.width, height: start.height).opacity(1 - progress / 0.3) }
             }
             .frame(width: frame.width, height: frame.height, alignment: .topLeading)
-            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .shadow(color: .black.opacity(0.22 * sin(progress * .pi)), radius: 24, y: 6)
+            .clipShape(shape)
+            .contentShape(shape)
             // A closing card reopens on a tap anywhere on it, however far it has shrunk.
             .onTapGesture { if !isOpen { open() } }
             .gesture(gesture)
             .accessibilityAddTraits(isOpen ? .isModal : [])
             .position(x: frame.midX, y: frame.midY)
             if let cover, let flying {
-                Image(uiImage: cover).resizable().scaledToFill()
-                    .frame(width: flying.width, height: flying.height)
-                    .clipShape(RoundedRectangle(cornerRadius: Self.mix(8, 14, progress), style: .continuous))
-                    .shadow(color: .black.opacity(0.18 * progress), radius: 20, y: 10)
-                    .position(x: flying.midX, y: flying.midY)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                let corners = RoundedRectangle(cornerRadius: Self.mix(8, 14, progress), style: .continuous)
+                ZStack {
+                    // Inset a point, so its edge never peeks out from under the picture onto the frosted mini card.
+                    corners.fill(Color(uiColor: .systemBackground)).padding(1).shadow(color: .black.opacity(0.18 * progress), radius: 20, y: 10)
+                    Image(uiImage: cover).resizable().scaledToFill()
+                        .frame(width: flying.width, height: flying.height)
+                        .clipShape(corners)
+                }
+                .frame(width: flying.width, height: flying.height)
+                .position(x: flying.midX, y: flying.midY)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .frame(width: full.width, height: full.height, alignment: .topLeading)

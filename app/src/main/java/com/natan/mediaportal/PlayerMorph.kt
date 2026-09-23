@@ -11,9 +11,13 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.activity.compose.LocalActivity
+import androidx.compose.ui.FrameRateCategory
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -92,6 +96,8 @@ internal class PlayerMorph(private val scope: CoroutineScope) {
     val active by derivedStateOf { held != null || expansion.value > 0f || expansion.targetValue > 0f }
     /** Whether the card rests fully open, hiding everything under it. */
     val covering by derivedStateOf { held == null && !expansion.isRunning && expansion.value >= 1f }
+    /** Whether the card moves, springing or under a finger: the time the display is asked for its highest rate. */
+    val moving by derivedStateOf { held != null || expansion.isRunning }
 
     /** Where the mini player's capsule and cover are, in the root's coordinates, while it is on screen. */
     var miniCapsule by mutableStateOf(Rect.Zero)
@@ -192,11 +198,19 @@ internal fun PlayerCard(morph: PlayerMorph, background: Color, capsule: Color, a
         if (Build.VERSION.SDK_INT >= 31) view.rootWindowInsets?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius?.toFloat() ?: 0f else 0f
     }
     val capsuleCorner = with(density) { 28.dp.toPx() }
-    val flying = artwork != null && morph.toMini
+    // Whether the cover flies is read as the card is drawn, not composed, so starting a flight costs no recomposition.
+    val flying = { artwork != null && morph.toMini }
     val inner = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    // Held, so recomposing the card doesn't hand the player a new cover modifier and recompose it too.
+    val coverModifier = remember(morph, artwork) {
+        Modifier
+            .onGloballyPositioned { cover -> inner[0]?.takeIf { it.isAttached }?.let { morph.bigCover = it.localBoundingBoxOf(cover, clipBounds = false) } }
+            .graphicsLayer { alpha = if (flying() && morph.progress < .999f) 0f else 1f }
+    }
     // A scrim deepening as the card opens gives it an edge against a page of the same colour. It draws only while
     // the card moves, and takes no touches.
     Box(Modifier.fillMaxSize().drawBehind { val t = morph.progress; if (t > 0f && t < 1f) drawRect(Color.Black.copy(alpha = .32f * t)) }) {
+        HighFrameRate(moving = { morph.moving }, progress = { morph.progress })
         Box(Modifier
             .layout { measurable, constraints ->
                 val card = morph.cardRect(constraints.maxWidth, constraints.maxHeight)
@@ -237,22 +251,20 @@ internal fun PlayerCard(morph: PlayerMorph, background: Color, capsule: Color, a
                     }
                 }
                 .onPlaced { inner[0] = it }) {
-                content(Modifier
-                    .onGloballyPositioned { cover -> inner[0]?.takeIf { it.isAttached }?.let { morph.bigCover = it.localBoundingBoxOf(cover, clipBounds = false) } }
-                    .graphicsLayer { alpha = if (flying && morph.progress < .999f) 0f else 1f })
+                content(coverModifier)
             }
             // Shrinking, the whole card is one target: a tap brings it back, whatever lies under the finger.
             if (closing) Box(Modifier.matchParentSize().pointerInput(Unit) { detectTapGestures { onReopen() } })
         }
         // The cover flies between the mini player's thumbnail and the full player's cover.
-        if (flying) Image(artwork, null, contentScale = ContentScale.Crop, modifier = Modifier.layout { measurable, constraints ->
+        if (artwork != null) Image(artwork, null, contentScale = ContentScale.Crop, modifier = Modifier.layout { measurable, constraints ->
             val t = morph.progress.coerceIn(0f, 1f)
-            val cover = lerpRect(morph.miniCover, morph.bigCover, t)
+            val cover = if (morph.toMini) lerpRect(morph.miniCover, morph.bigCover, t) else Rect.Zero
             val placeable = measurable.measure(Constraints.fixed(cover.width.roundToInt().coerceAtLeast(0), cover.height.roundToInt().coerceAtLeast(0)))
             layout(constraints.maxWidth, constraints.maxHeight) {
                 placeable.placeWithLayer(cover.left.roundToInt(), cover.top.roundToInt()) {
                     val shown = morph.progress
-                    alpha = if (shown > 0f && shown < .999f) 1f else 0f
+                    alpha = if (flying() && shown > 0f && shown < .999f) 1f else 0f
                     shape = RoundedCornerShape(with(density) { (8.dp + (14.dp - 8.dp) * t).toPx() })
                     clip = true
                     // The full cover's shadow builds up only as it lands; a moving shadow is costly to redraw.
@@ -261,4 +273,37 @@ internal fun PlayerCard(morph: PlayerMorph, background: Color, capsule: Color, a
             }
         })
     }
+}
+
+/**
+ * Asks the display for its highest refresh rate while the card moves, and leaves the choice to the system again once it
+ * stops, so a still screen can drop to a lower rate. Neither needs a recomposition. From Android 15 an invisible layer
+ * that changes with [progress] votes the high frame rate category on each frame it changes, and no other; before it,
+ * the window prefers the display's fastest mode while [moving] holds.
+ */
+@Composable
+internal fun HighFrameRate(moving: () -> Boolean, progress: () -> Float) {
+    if (Build.VERSION.SDK_INT >= 35) {
+        Box(Modifier.size(1.dp).preferredFrameRate(FrameRateCategory.High).graphicsLayer { alpha = 0f; translationX = progress() })
+        return
+    }
+    val window = LocalActivity.current?.window
+    val display = LocalView.current.display
+    LaunchedEffect(window, display) {
+        if (window == null || display == null) return@LaunchedEffect
+        val modes = display.supportedModes.map { DisplayModeChoice(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate) }
+        val fastest = fastestDisplayMode(modes, display.mode.physicalWidth, display.mode.physicalHeight) ?: return@LaunchedEffect
+        val previous = window.attributes.preferredDisplayModeId
+        try { snapshotFlow(moving).collect { on -> window.attributes = window.attributes.apply { preferredDisplayModeId = if (on) fastest else previous } } }
+        finally { window.attributes = window.attributes.apply { preferredDisplayModeId = previous } }
+    }
+}
+
+internal data class DisplayModeChoice(val id: Int, val width: Int, val height: Int, val refreshRate: Float)
+
+/** The fastest of [modes] at [width] by [height]; null when that resolution offers only one refresh rate, leaving the choice to the system. */
+internal fun fastestDisplayMode(modes: List<DisplayModeChoice>, width: Int, height: Int): Int? {
+    val matching = modes.filter { it.width == width && it.height == height }
+    if (matching.map { it.refreshRate }.distinct().size < 2) return null
+    return matching.maxBy { it.refreshRate }.id
 }

@@ -196,7 +196,8 @@ final class FeedParser: NSObject, XMLParserDelegate {
         try SecureStore.write(JSONEncoder().encode(proposed), name: "booklore"); account = proposed
         for book in books where library.book(book.id)?.cover == nil {
             guard let cover = book.remoteCover, let temp = try? await fetch(cover, account: proposed, limit: 20_000_000) else { continue }
-            try? library.replaceCover(temp, id: book.id); try? FileManager.default.removeItem(at: temp)
+            if let data = try? Data(contentsOf: temp) { try? await library.setCover(data, id: book.id) }
+            try? FileManager.default.removeItem(at: temp)
         }
     }
     func download(_ book: MediaBook, library: Library) async throws {

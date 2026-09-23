@@ -2,6 +2,7 @@ package com.natan.mediaportal
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -9,6 +10,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.Bundle
+import android.os.SystemClock
 import android.media.MediaMetadataRetriever
 import androidx.core.content.ContextCompat
 import androidx.media3.common.*
@@ -27,6 +29,8 @@ class PlaybackService : MediaSessionService() {
     companion object {
         /** The book the player holds, so a position pulled from another device never displaces it. */
         @Volatile internal var activeBook: String? = null
+        /** How often a playing book's position is written; a pause, seek or chapter change is written at once. */
+        internal const val SAVE_INTERVAL_MS = 10_000L
     }
     private lateinit var player: ExoPlayer
     private var session: MediaSession? = null
@@ -37,27 +41,54 @@ class PlaybackService : MediaSessionService() {
         if (key == "sleep:chapter") player.setPauseAtEndOfMediaItems(progress.getBoolean("sleep:chapter", false))
     }
     private fun clearSleep() { progress.edit().remove("sleep:deadline").remove("sleep:chapter").apply() }
-    private fun savePosition() {
+    /**
+     * Positions are written on their own thread with commit(). An apply() leaves the write queued for the main thread
+     * to finish at the next notification update or screen change, which held it on the disk for up to 25 ms at a time.
+     * One thread keeps the writes in the order they were made.
+     */
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var savedAt = 0L
+    private fun write(change: SharedPreferences.() -> Unit) { if (!writer.isShutdown) writer.execute { progress.change() } }
+    /** Records where the player is; [handOver] also offers it to the reader's other devices straight away. */
+    private fun savePosition(handOver: Boolean = false) {
         val id = player.currentMediaItem?.mediaId
         activeBook = id
         if (id == null) return
+        savedAt = SystemClock.elapsedRealtime()
+        // The player is read here, on its own thread; only the writing moves.
         val position = player.bookPosition
-        val edit = progress.edit().putLong("audio:$id", position).putString("activeAudio", id)
-            .putLong("lastOpened:$id", System.currentTimeMillis())
-        // Only a move counts as this device writing a position. A paused book ticking the clock
-        // every second would otherwise outrank a genuinely newer position from another device.
-        if (position != progress.getLong("audio:$id", -1)) edit.putLong("audioModified:$id", System.currentTimeMillis())
-        // Home can only turn a saved position into progress if it also knows the length, and the
-        // length is not known until the book has loaded, so record it whenever it is available.
-        player.bookDuration.takeIf { it > 0 }?.let { edit.putLong("audioDuration:$id", it) }
-        edit.apply()
-        if (player.isPlaying) PositionSync.schedule(this, immediate = false)
+        val duration = player.bookDuration
+        val playing = player.isPlaying
+        val now = System.currentTimeMillis()
+        write {
+            val edit = edit().putLong("audio:$id", position).putString("activeAudio", id).putLong("lastOpened:$id", now)
+            // Only a move counts as this device writing a position. A paused book stamping the clock
+            // would otherwise outrank a genuinely newer position from another device.
+            if (position != getLong("audio:$id", -1)) edit.putLong("audioModified:$id", now)
+            // Home can only turn a saved position into progress if it also knows the length, and the
+            // length is not known until the book has loaded, so record it whenever it is available.
+            duration.takeIf { it > 0 }?.let { edit.putLong("audioDuration:$id", it) }
+            edit.commit()
+            if (handOver) PositionSync.schedule(this@PlaybackService, immediate = true)
+            else if (playing) PositionSync.schedule(this@PlaybackService, immediate = false)
+        }
+    }
+    /** A screen of the app leaving view, the app going to the background above all, writes the position at once. */
+    private val screens = object : android.app.Application.ActivityLifecycleCallbacks {
+        override fun onActivityStopped(activity: android.app.Activity) { savePosition(handOver = true) }
+        override fun onActivityCreated(activity: android.app.Activity, state: Bundle?) {}
+        override fun onActivityStarted(activity: android.app.Activity) {}
+        override fun onActivityResumed(activity: android.app.Activity) {}
+        override fun onActivityPaused(activity: android.app.Activity) {}
+        override fun onActivitySaveInstanceState(activity: android.app.Activity, state: Bundle) {}
+        override fun onActivityDestroyed(activity: android.app.Activity) {}
     }
     private val saveTick = object : Runnable {
         override fun run() {
             val deadline = progress.getLong("sleep:deadline", 0)
             if (deadline > 0 && System.currentTimeMillis() >= deadline) { player.pause(); clearSleep() }
-            savePosition(); handler.postDelayed(this, 1000)
+            if (player.isPlaying && SystemClock.elapsedRealtime() - savedAt >= SAVE_INTERVAL_MS) savePosition()
+            handler.postDelayed(this, 1000)
         }
     }
     override fun onCreate() {
@@ -91,15 +122,20 @@ class PlaybackService : MediaSessionService() {
             override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) {
                 progress.edit().putFloat("audioSpeed", parameters.speed).apply()
             }
-            override fun onEvents(player: Player, events: Player.Events) { savePosition() }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
+            override fun onEvents(player: Player, events: Player.Events) {
+                // A play or pause, a seek, a chapter or book change and a stop are written at once. Steady playback waits
+                // for the tick, and so does a stream stalling to buffer, which would otherwise write on every stall.
+                val stopped = !player.isPlaying && (!player.playWhenReady || player.playbackState == Player.STATE_ENDED || player.playbackState == Player.STATE_IDLE)
                 // Pausing or stopping is the moment the reader's other device most needs this.
-                if (!isPlaying) { savePosition(); PositionSync.schedule(this@PlaybackService, immediate = true) }
+                val handOver = stopped && events.contains(Player.EVENT_IS_PLAYING_CHANGED)
+                if (handOver || events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_POSITION_DISCONTINUITY,
+                        Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED)) savePosition(handOver)
             }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (oldPosition.mediaItem != null && oldPosition.mediaItem?.mediaId != newPosition.mediaItem?.mediaId) clearSleep()
-                oldPosition.mediaItem?.let { progress.edit().putLong("audio:${it.mediaId}", it.chapterStartMs + oldPosition.positionMs.coerceAtLeast(0))
-                    .putLong("audioModified:${it.mediaId}", System.currentTimeMillis()).apply() }
+                val now = System.currentTimeMillis()
+                oldPosition.mediaItem?.let { item -> write { edit().putLong("audio:${item.mediaId}", item.chapterStartMs + oldPosition.positionMs.coerceAtLeast(0))
+                    .putLong("audioModified:${item.mediaId}", now).commit() } }
             }
         })
         progress.registerOnSharedPreferenceChangeListener(sleepListener)
@@ -168,6 +204,7 @@ class PlaybackService : MediaSessionService() {
                 }
             }).build()
         handler.post(saveTick)
+        application.registerActivityLifecycleCallbacks(screens)
     }
     private fun streamingItems(store: LibraryStore, title: Title): List<MediaItem> {
         val telegram = TelegramLibrary.get(this)
@@ -193,7 +230,8 @@ class PlaybackService : MediaSessionService() {
                 }
             })
             duration = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
-            if (!store.file("${title.id}.jpg").exists()) metadata.embeddedPicture?.let { store.file("${title.id}.jpg").writeBytes(it) }
+            // Written whole and at a bounded size, since the library may be reading this cover at the same moment.
+            if (!store.file("${title.id}.jpg").exists()) metadata.embeddedPicture?.let { runCatching { Artwork.fromBytes(it, store.file("${title.id}.jpg")) } }
         }
         val chapters = runCatching { AudioChapters.read(AudioChapters.RangeInput(entry.size, ::read)) }.getOrDefault(emptyList()).toMutableList()
         if (chapters.isEmpty() || chapters.first().startMs > 0) chapters.add(0, AudioChapter("Opening", 0))
@@ -221,10 +259,12 @@ class PlaybackService : MediaSessionService() {
         if (controllerInfo.uid == applicationInfo.uid || controllerInfo.isTrusted) session else null
     override fun onDestroy() {
         progress.unregisterOnSharedPreferenceChangeListener(sleepListener)
+        application.unregisterActivityLifecycleCallbacks(screens)
         handler.removeCallbacks(saveTick)
-        savePosition()
+        savePosition(handOver = true)
+        // The last position has to be on disk before the process may go.
+        writer.shutdown(); writer.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
         activeBook = null
-        PositionSync.schedule(this, immediate = true)
         session?.release(); player.release(); session = null
         resolver.shutdownNow()
         super.onDestroy()

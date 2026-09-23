@@ -67,6 +67,9 @@ class TelegramError(val code: Int, val detail: String) : Exception(friendly(code
 /** One TDLib receiver per process. No server relay and no outgoing chat messages. */
 class TelegramLibrary private constructor(private val context: Context) {
     companion object {
+        /** Tries a streamed book's cover gets when reads fail, and the wait before trying one again. */
+        private const val ARTWORK_TRIES = 3
+        private const val ARTWORK_RETRY_MS = 5_000L
         @Volatile private var instance: TelegramLibrary? = null
         fun get(context: Context): TelegramLibrary = instance ?: synchronized(this) {
             instance ?: TelegramLibrary(context.applicationContext).also { instance = it }
@@ -94,7 +97,9 @@ class TelegramLibrary private constructor(private val context: Context) {
     private var download: Job? = null
     private var refreshJob: Job? = null
     private var artworkJob: Job? = null
-    private val artworkAttempted = ConcurrentHashMap.newKeySet<String>()
+    /** Failed tries per book, and the books settled with or without a cover, for the selected chat. */
+    private val artworkTries = ConcurrentHashMap<String, Int>()
+    private val artworkDone = ConcurrentHashMap.newKeySet<String>()
     private val root = File(context.noBackupFilesDir, "telegram").apply { mkdirs() }
     private val prefs = context.getSharedPreferences("telegram-library", Context.MODE_PRIVATE)
     /** True once sign-in can start, whether the identity ships with the build or was entered here. */
@@ -249,7 +254,7 @@ class TelegramLibrary private constructor(private val context: Context) {
         return chat.optString("title").ifBlank { "Library" }
     }
     suspend fun select(id: Long) {
-        artworkJob?.cancelAndJoin(); artworkAttempted.clear()
+        artworkJob?.cancelAndJoin(); artworkTries.clear(); artworkDone.clear()
         chat = id; cursor = 0; entries.value = emptyList(); more.value = false; scanning.value = true
         try {
             selectedName.value = chatTitle(id)
@@ -281,41 +286,68 @@ class TelegramLibrary private constructor(private val context: Context) {
         if (catalog.size != before) PositionSync.schedule(context, immediate = true)
         loadArtwork()
     }
+    private fun artworkWaiting(entry: TelegramFile) = entry.audio && entry.key !in artworkDone && (artworkTries[entry.key] ?: 0) < ARTWORK_TRIES
+    /**
+     * Loads streamed audiobooks' covers in the background, one book at a time, pausing while a download runs. A book
+     * whose attempt failed, on a poor connection say, is tried again a little later, rather than only once the chat is
+     * chosen again.
+     */
     @Synchronized private fun loadArtwork() {
         if (artworkJob?.isActive == true) return
         val owner = account
         artworkJob = scope.launch {
             while (isActive) {
-                val entry = entries.value.firstOrNull { it.audio && it.key !in artworkAttempted } ?: break
+                // Books not tried yet go first; a retry waits a moment, so a dropped connection has time to come back.
+                val entry = entries.value.filter(::artworkWaiting).minByOrNull { artworkTries[it.key] ?: 0 } ?: break
                 while (activity.value != null) delay(500)
-                artworkAttempted.add(entry.key)
-                val title = LibraryStore(context).all().find { it.telegramSource == "$owner:${entry.key}" && it.streaming } ?: continue
-                val destination = File(context.filesDir, "${title.id}.jpg")
-                if (destination.exists() || File(context.filesDir, "${title.id}-custom.jpg").exists()) continue
+                if ((artworkTries[entry.key] ?: 0) > 0) delay(ARTWORK_RETRY_MS)
+                val title = LibraryStore(context).all().find { it.telegramSource == "$owner:${entry.key}" && it.streaming }
+                if (title == null || File(context.filesDir, "${title.id}.jpg").exists() || File(context.filesDir, "${title.id}-custom.jpg").exists()) { artworkDone.add(entry.key); continue }
+                // A read refused because a download started isn't a failed try: the loop waits for the download instead.
+                fun failed() { if (activity.value == null) artworkTries.merge(entry.key, 1, Int::plus) }
                 try {
-                    withTimeout(25_000) {
-                        if (entry.thumbnail != 0) try {
-                            val info = request("getFile", "file_id" to entry.thumbnail)
-                            val size = maxOf(info.optLong("size"), info.optLong("expected_size"))
-                            if (size in 1..(2 * 1024 * 1024)) {
-                                val thumb = entry.copy(file = entry.thumbnail, size = size)
-                                val bytes = java.io.ByteArrayOutputStream()
-                                while (bytes.size() < size) bytes.write(readRange(thumb, bytes.size().toLong(), minOf(256 * 1024, (size - bytes.size()).toInt()), true))
-                                runCatching { Artwork.fromBytes(bytes.toByteArray(), destination) }
-                            }
-                        } catch (e: CancellationException) { throw e }
-                        catch (_: Exception) { /* Fall back to the embedded cover. */ }
-                        if (!destination.exists()) Artwork.fromStream(entry.size, destination) { offset, length -> readRange(entry, offset, length, true) }
-                    }
-                    if (destination.exists()) revision.value++
-                } catch (_: TimeoutCancellationException) { }
+                    if (artwork(entry, File(context.filesDir, "${title.id}.jpg"))) revision.value++
+                    artworkDone.add(entry.key)
+                } catch (_: TimeoutCancellationException) { failed() }
                 catch (e: CancellationException) { throw e }
-                catch (_: Exception) { /* Retry missing artwork on refresh. */ }
+                catch (_: Exception) { failed() }
             }
         }
         artworkJob?.invokeOnCompletion { cause ->
-            if (cause == null && entries.value.any { it.audio && it.key !in artworkAttempted }) loadArtwork()
+            if (cause == null && entries.value.any(::artworkWaiting)) loadArtwork()
         }
+    }
+    /**
+     * Saves a streamed audiobook's cover to [destination]: the full-size picture embedded in the file, found with a few
+     * small reads; else Telegram's thumbnail, a few hundred pixels at most; else, for a file the embedded reader can't
+     * search, whatever Android's metadata reader finds. Returns whether a cover was saved; a failed read throws.
+     */
+    private suspend fun artwork(entry: TelegramFile, destination: File): Boolean {
+        val read: suspend (Long, Int) -> ByteArray = { offset, length -> readRange(entry, offset, minOf(length, 512 * 1024), background = true) }
+        val search = withTimeout(60_000) { EmbeddedCover.find(entry.size, read) }
+        if (search is EmbeddedCover.Found && runCatching { Artwork.fromBytes(search.image, destination) }.isSuccess) return true
+        // A thumbnail that fails to load is remembered, so the book is tried again if nothing else finds a cover.
+        val thumbnail = runCatching { withTimeout(25_000) { thumbnail(entry, destination) } }
+        if (thumbnail.getOrNull() == true) return true
+        val failure = thumbnail.exceptionOrNull()
+        if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+        // A file read through without a picture has none for the metadata reader either, which would only download
+        // its whole index again to find that out.
+        val found = search is EmbeddedCover.Unreadable &&
+            withTimeout(65_000) { Artwork.fromStream(entry.size, destination, budget = 48 * 1024 * 1024, timeoutMs = 60_000, read = read) }
+        if (!found) failure?.let { throw it }
+        return found
+    }
+    /** Telegram's own small cover for [entry], if it has one that decodes. */
+    private suspend fun thumbnail(entry: TelegramFile, destination: File): Boolean {
+        if (entry.thumbnail == 0) return false
+        val info = request("getFile", "file_id" to entry.thumbnail)
+        val size = maxOf(info.optLong("size"), info.optLong("expected_size"))
+        if (size !in 1..(2 * 1024 * 1024)) return false
+        val thumb = entry.copy(file = entry.thumbnail, size = size)
+        val bytes = java.io.ByteArrayOutputStream()
+        while (bytes.size() < size) bytes.write(readRange(thumb, bytes.size().toLong(), minOf(256 * 1024, (size - bytes.size()).toInt()), true))
+        return runCatching { Artwork.fromBytes(bytes.toByteArray(), destination) }.isSuccess
     }
     fun downloaded(entry: TelegramFile): Boolean = LibraryStore(context).all().any { it.telegramSource == "$account:${entry.key}" && it.isLocal }
     suspend fun resolve(uri: Uri): TelegramFile {

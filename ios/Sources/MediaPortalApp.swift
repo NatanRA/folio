@@ -5,10 +5,12 @@ import UniformTypeIdentifiers
 let ebookTypes: [UTType] = [UTType(filenameExtension: "epub")!, .pdf, UTType(filenameExtension: "cbz") ?? .zip]
 
 @main struct MediaPortalApp: App {
-    @StateObject var library = Library()
-    @StateObject var server = BookServer()
-    @StateObject var audio = AudioPlayer()
-    @StateObject var sync = KoSync()
+    // Held, not observed: as state objects, every change to any of them redrew the whole app from the root, which
+    // cost frames in every animation. The views that show them observe them through the environment.
+    @State var library = Library()
+    @State var server = BookServer()
+    @State var audio = AudioPlayer()
+    @State var sync = KoSync()
     @State private var navigation: FolioNavigation?
     @AppStorage("appearance") var appearance = "System"
     @AppStorage("accent") var accent = "Aquamarine"
@@ -21,9 +23,16 @@ let ebookTypes: [UTType] = [UTType(filenameExtension: "epub")!, .pdf, UTType(fil
                 // Coming to the front is when a device first has a chance to learn where the reader
                 // got to elsewhere; going to the back is its last chance to send where it got to.
                 .onChange(of: phase, initial: true) { _, value in
+                    if value == .background { audio.savePosition() }
                     if value == .active || value == .background { PositionSync.shared.exchange(library: library) }
                 }
-                .task { TelegramLibrary.shared.library = library; if TelegramLibrary.shared.configured { TelegramLibrary.shared.start() } }
+                .task {
+                    TelegramLibrary.shared.library = library; if TelegramLibrary.shared.configured { TelegramLibrary.shared.start() }
+                    #if DEBUG
+                    FrameMonitor.shared.start()
+                    await PlayerMorphAudit.run(audio: audio, library: library)
+                    #endif
+                }
                 .onOpenURL { url in
                     // Invalid navigation links must never fall through to file import.
                     if url.scheme == "folio" {
@@ -101,17 +110,23 @@ struct BookCover: View {
     @EnvironmentObject var library: Library
     var body: some View {
         GeometryReader { geometry in
-            if let cover = book.cover, let image = UIImage(contentsOfFile: library.file(cover).path) {
-                // Covers keep their own proportions and rest on the bottom edge, so a row of mixed shapes reads as a shelf.
-                Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 12))
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom)
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.12))
-                    VStack(spacing: 12) { Image(systemName: book.audio != nil && book.ebook == nil ? "headphones" : "book.closed").font(.largeTitle); Text(book.title).font(.headline).multilineTextAlignment(.center).lineLimit(4) }.padding()
-                }.clipShape(RoundedRectangle(cornerRadius: 12))
-            }
+            if let cover = book.cover, case let file = library.file(cover), FileManager.default.fileExists(atPath: file.path) {
+                StoredCover(file: file, points: max(geometry.size.width, geometry.size.height)) { image in
+                    // Covers keep their own proportions and rest on the bottom edge, so a row of mixed shapes reads as a shelf.
+                    Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom)
+                } placeholder: { failed in
+                    if failed { titleCard } else { Color.clear }
+                }
+            } else { titleCard }
         }.accessibilityHidden(true)
+    }
+    /// Stands in for a book without a readable cover.
+    private var titleCard: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.12))
+            VStack(spacing: 12) { Image(systemName: book.audio != nil && book.ebook == nil ? "headphones" : "book.closed").font(.largeTitle); Text(book.title).font(.headline).multilineTextAlignment(.center).lineLimit(4) }.padding()
+        }.clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -122,6 +137,7 @@ struct PortalHome: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var server: BookServer
     @EnvironmentObject var audio: AudioPlayer
+    @Environment(\.displayScale) private var displayScale
     @State private var tab = 0
     @State private var search = ""
     @State private var searching = false
@@ -308,47 +324,9 @@ struct PortalHome: View {
         let tabIndex = home ? 0 : downloads ? 2 : 1
         return NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if library.busy { ProgressView("Updating library…").frame(maxWidth: .infinity) }
-                    let filtered = LibrarySorting.sorted(library.books.filter { !downloads || $0.isLocal }, by: LibrarySort(rawValue: sortName) ?? .title)
-                    let unfinished = library.books.filter { $0.progress > 0 && !$0.finished }
-                    if home, let resume = unfinished.max(by: { ($0.lastOpenedAt ?? .distantPast) < ($1.lastOpenedAt ?? .distantPast) }) {
-                        NavigationLink { BookDetail(id: resume.id) } label: {
-                            HStack(spacing: 20) {
-                                BookCover(book: resume).frame(width: 100, height: 145)
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text(resume.listening ? "CONTINUE LISTENING" : "CONTINUE READING").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
-                                    Text(resume.title).font(.title3.bold()).foregroundStyle(.primary).lineLimit(3)
-                                    Text("\(Int(resume.progress * 100))% \(resume.listening ? "listened" : "read")").font(.subheadline).foregroundStyle(.secondary)
-                                }
-                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 24))
-                        }.buttonStyle(.plain)
-                    }
-                    if filtered.isEmpty {
-                        ContentUnavailableView {
-                            Label(search.isEmpty ? (downloads ? "No downloads yet" : "Your library starts here") : "No matching titles", systemImage: "books.vertical")
-                        } description: { Text(search.isEmpty ? "Add an e-book or audiobook, or connect your BookLore library." : "Try another title or author.") }
-                        actions: { if search.isEmpty { Button("Add a book") { importChoice = true }.buttonStyle(.borderedProminent).foregroundStyle(portalOnAccent) } }
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 20, alignment: .top)], alignment: .leading, spacing: 24) {
-                            ForEach(filtered) { book in
-                                NavigationLink { BookDetail(id: book.id) } label: {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        BookCover(book: book).frame(height: 215).overlay(alignment: .bottomTrailing) {
-                                            HStack(spacing: 4) {
-                                                if book.download != nil || book.telegramSource != nil { Image(systemName: "cloud.fill").accessibilityLabel("From your cloud library, last checked") }
-                                                if book.isLocal { Image(systemName: "checkmark.circle.fill") }
-                                            }.font(.caption).padding(6).background(.regularMaterial, in: Capsule()).padding(6)
-                                        }
-                                        if book.progress > 0 || book.finished { ProgressView(value: book.finished ? 1 : book.progress) }
-                                        Text(book.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
-                                        Text(book.author.isEmpty ? (book.audio != nil ? "Audiobook" : "E-book") : book.author).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                    }
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }.padding(20)
+                // Its own view, compared by value, so a change to the player or the page around it doesn't rebuild,
+                // re-sort and re-lay out every tab's shelf; only the library changing does.
+                CatalogueShelf(home: home, downloads: downloads, searching: !search.isEmpty, addBook: { importChoice = true }).equatable()
             }.navigationTitle(home ? "Home" : downloads ? "Downloads" : "Library")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Image("FolioLogo").renderingMode(.template).resizable().scaledToFit().foregroundStyle(portalAccent(brandAccent)).frame(width: 28, height: 28).accessibilityLabel("Folio") }
@@ -381,8 +359,11 @@ struct PortalHome: View {
                 Button { audio.playerRoute = PlayerRoute(id: id, fromMiniPlayer: true) } label: {
                     HStack(spacing: 12) {
                         Group {
-                            if let cover = book.cover, let image = UIImage(contentsOfFile: library.file(cover).path) { Image(uiImage: image).resizable().scaledToFill() }
-                            else { Image(systemName: "headphones").frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.accentColor.opacity(0.12)) }
+                            if let cover = book.cover {
+                                StoredCover(file: library.file(cover), points: 36) { Image(uiImage: $0).resizable().scaledToFill() } placeholder: { _ in Color.accentColor.opacity(0.12) }
+                                    // The player card's flying cover starts from this thumbnail, so have it decoded at the player's size already.
+                                    .task(id: cover) { await CoverImages.shared.pin(library.file(cover), points: PlayerCard.coverPoints, scale: displayScale) }
+                            } else { Image(systemName: "headphones").frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.accentColor.opacity(0.12)) }
                         }.frame(width: 36, height: 36).clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if owner == tab { miniCoverFrame = $0 } }
                         VStack(alignment: .leading, spacing: 1) {
@@ -406,15 +387,72 @@ struct PortalHome: View {
     }
 }
 
+/// A tab's books: the book to pick up again on Home, then every title as a cover on the shelf.
+struct CatalogueShelf: View, Equatable {
+    let home: Bool
+    let downloads: Bool
+    let searching: Bool
+    let addBook: () -> Void
+    @EnvironmentObject var library: Library
+    @AppStorage("library.sort") private var sortName = LibrarySort.title.rawValue
+    static func == (a: Self, b: Self) -> Bool { a.home == b.home && a.downloads == b.downloads && a.searching == b.searching }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if library.busy { ProgressView("Updating library…").frame(maxWidth: .infinity) }
+            let filtered = LibrarySorting.sorted(library.books.filter { !downloads || $0.isLocal }, by: LibrarySort(rawValue: sortName) ?? .title)
+            let unfinished = library.books.filter { $0.progress > 0 && !$0.finished }
+            if home, let resume = unfinished.max(by: { ($0.lastOpenedAt ?? .distantPast) < ($1.lastOpenedAt ?? .distantPast) }) {
+                NavigationLink { BookDetail(id: resume.id) } label: {
+                    HStack(spacing: 20) {
+                        BookCover(book: resume).frame(width: 100, height: 145)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(resume.listening ? "CONTINUE LISTENING" : "CONTINUE READING").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                            Text(resume.title).font(.title3.bold()).foregroundStyle(.primary).lineLimit(3)
+                            Text("\(Int(resume.progress * 100))% \(resume.listening ? "listened" : "read")").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 24))
+                }.buttonStyle(.plain)
+            }
+            if filtered.isEmpty {
+                ContentUnavailableView {
+                    Label(searching ? "No matching titles" : downloads ? "No downloads yet" : "Your library starts here", systemImage: "books.vertical")
+                } description: { Text(searching ? "Try another title or author." : "Add an e-book or audiobook, or connect your BookLore library.") }
+                actions: { if !searching { Button("Add a book") { addBook() }.buttonStyle(.borderedProminent).foregroundStyle(portalOnAccent) } }
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 20, alignment: .top)], alignment: .leading, spacing: 24) {
+                    ForEach(filtered) { book in
+                        NavigationLink { BookDetail(id: book.id) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                BookCover(book: book).frame(height: 215).overlay(alignment: .bottomTrailing) {
+                                    HStack(spacing: 4) {
+                                        if book.download != nil || book.telegramSource != nil { Image(systemName: "cloud.fill").accessibilityLabel("From your cloud library, last checked") }
+                                        if book.isLocal { Image(systemName: "checkmark.circle.fill") }
+                                    }.font(.caption).padding(6).background(.regularMaterial, in: Capsule()).padding(6)
+                                }
+                                if book.progress > 0 || book.finished { ProgressView(value: book.finished ? 1 : book.progress) }
+                                Text(book.title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
+                                Text(book.author.isEmpty ? (book.audio != nil ? "Audiobook" : "E-book") : book.author).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+        }.padding(20)
+    }
+}
+
 struct BookDetail: View {
     let id: String
     @EnvironmentObject var audio: AudioPlayer
     @EnvironmentObject var library: Library
     @EnvironmentObject var server: BookServer
     @State private var reader = false
-    @State private var importer = false
-    @State private var audioImport = false
-    @State private var coverImport = false
+    /// What the page's one file picker is choosing. SwiftUI answers only one file importer on a view, so with a picker
+    /// each, "Add e-book" and "Add audiobook" did nothing on iOS 26.
+    private enum Pick { case ebook, audiobook, cover }
+    @State private var pick = Pick.cover
+    @State private var picking = false
+    @State private var savingArtwork = false
     @Environment(\.miniPlayerClearance) private var miniPlayerClearance
     var body: some View {
         if let book = library.book(id) {
@@ -427,11 +465,14 @@ struct BookDetail: View {
             .fullScreenCover(isPresented: $reader) {
                 if ["pdf", "cbz"].contains(book.ebook?.components(separatedBy: ".").last?.lowercased() ?? "") { FixedReaderScreen(id: id) } else { ReaderScreen(id: id) }
             }
-            .fileImporter(isPresented: $importer, allowedContentTypes: audioImport ? [.audio, UTType(filenameExtension: "m4b") ?? .audio] : ebookTypes) { result in Task {
+            .fileImporter(isPresented: $picking, allowedContentTypes: pickTypes) { [pick] result in Task {
                 library.busy = true; defer { library.busy = false }
-                do { _ = try await library.importFile(result.get(), audio: audioImport, linking: id) } catch { library.error = error.localizedDescription }
+                do {
+                    let url = try result.get()
+                    if pick == .cover { savingArtwork = true; defer { savingArtwork = false }; try await library.replaceCover(url, id: id) }
+                    else { _ = try await library.importFile(url, audio: pick == .audiobook, linking: id) }
+                } catch { library.error = error.localizedDescription }
             } }
-            .fileImporter(isPresented: $coverImport, allowedContentTypes: [.jpeg, .png]) { result in do { try library.replaceCover(result.get(), id: id) } catch { library.error = error.localizedDescription } }
         }
     }
     func details(_ book: MediaBook, fitting: Bool) -> some View {
@@ -442,29 +483,45 @@ struct BookDetail: View {
             HStack(spacing: 12) {
                 if book.ebook != nil { Button { reader = true } label: { formatLabel("E-book", icon: "book", progress: book.finished ? "Finished" : "\(Int(book.readingProgress * 100))%") }.buttonStyle(.plain) }
                 else if book.download != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.download(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "E-book") }.buttonStyle(.plain).disabled(library.busy) }
-                if book.audio != nil { Button { audio.playerRoute = PlayerRoute(id: id) } label: { formatLabel("Audiobook", icon: "headphones", progress: mediaTime(book.audioPosition)) }.buttonStyle(.plain) }
+                if book.audio != nil { Button { audio.playerRoute = PlayerRoute(id: id) } label: {
+                    // While this book plays, its time follows the player once a second rather than the saved position.
+                    TimelineView(.animation(minimumInterval: 1, paused: !(audio.playing && audio.bookID == id))) { _ in
+                        formatLabel("Audiobook", icon: "headphones", progress: mediaTime(audio.bookID == id ? audio.position : book.audioPosition))
+                    }
+                }.buttonStyle(.plain) }
                 else if book.audioDownload != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.downloadAudio(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "Audiobook") }.buttonStyle(.plain).disabled(library.busy) }
             }
-            if book.ebook == nil && book.download == nil { Button("Add e-book") { audioImport = false; importer = true }.frame(minHeight: 44) }
-            if book.audio == nil && book.audioDownload == nil { Button("Add audiobook") { audioImport = true; importer = true }.frame(minHeight: 44) }
+            if book.ebook == nil && book.download == nil { Button("Add e-book") { pick = .ebook; picking = true }.frame(minHeight: 44).disabled(library.busy) }
+            if book.audio == nil && book.audioDownload == nil { Button("Add audiobook") { pick = .audiobook; picking = true }.frame(minHeight: 44).disabled(library.busy) }
             if book.streaming { Button("Keep offline") { Task {
                 do { guard let url = book.audio.flatMap(URL.init(string:)) else { return }; let entry = try await TelegramLibrary.shared.resolve(url); audio.stopForOffline(); TelegramLibrary.shared.download(entry, library: library) }
                 catch { library.error = error.localizedDescription }
             } }.frame(minHeight: 44) }
-            if library.busy { ProgressView("Downloading…") }
-            Button("Edit artwork", systemImage: "photo") { coverImport = true }.font(.subheadline).padding(.top, 8)
+            if library.busy { ProgressView(savingArtwork ? "Saving artwork…" : "Downloading…") }
+            Button("Edit artwork", systemImage: "photo") { pick = .cover; picking = true }.font(.subheadline).padding(.top, 8).disabled(library.busy)
         }.padding(24)
     }
     /// The cover at its own proportions, at most 240 points wide and 320 tall. On a page that fits the screen it
     /// grows into the height the rest leaves, from 140 points; in the scrolling fallback it is full size.
     func artwork(_ book: MediaBook, fitting: Bool) -> some View {
-        let size = book.cover.flatMap { UIImage(contentsOfFile: library.file($0).path)?.size }
-        let aspect = size.map { $0.width / max($0.height, 1) } ?? 200 / 295
+        let aspect = book.cover.flatMap { CoverImages.shared.aspect(library.file($0)) } ?? 200 / 295
         let tallest = min(320, 240 / aspect)
         return BookCover(book: book).aspectRatio(aspect, contentMode: .fit)
             .frame(maxWidth: 240, idealHeight: fitting ? min(140, tallest) : tallest, maxHeight: tallest)
             .layoutPriority(-1) // The title and buttons keep their full height; the cover takes what is left.
             .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
+            #if DEBUG
+            // UI tests read which cover file is showing; VoiceOver users hear the title below instead.
+            .accessibilityElement().accessibilityIdentifier("book-artwork").accessibilityValue(book.cover ?? "none")
+            #endif
+    }
+    private var pickTypes: [UTType] {
+        switch pick {
+        case .ebook: ebookTypes
+        case .audiobook: [.audio, UTType(filenameExtension: "m4b") ?? .audio]
+        // Any picture iOS can open, HEIC included; it is stored as a JPEG.
+        case .cover: [.image]
+        }
     }
     func formatLabel(_ name: String, icon: String, progress: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {

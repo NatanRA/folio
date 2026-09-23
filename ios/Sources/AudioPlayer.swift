@@ -11,9 +11,14 @@ struct AudioChapter: Identifiable {
 @MainActor final class AudioPlayer: ObservableObject {
     @Published var bookID: String? { didSet { PositionSync.shared.playing = bookID } }
     @Published var playing = false
-    @Published var position = 0.0
+    /// Where playback is, updated twice a second. It isn't published: every screen watches this player, and redrawing
+    /// them all twice a second stalled the main thread for tens of milliseconds each time, which showed as stutter in
+    /// every animation. What shows it follows `clock` every frame, or `chapterIndex` when the chapter changes.
+    var position = 0.0 { didSet { syncChapter() } }
     @Published var duration = 0.0
-    @Published var chapters: [AudioChapter] = []
+    @Published var chapters: [AudioChapter] = [] { didSet { syncChapter() } }
+    /// The chapter playing, published only when it changes.
+    @Published private(set) var chapterIndex = 0
     @Published var error: String?
     @Published var loading = false
     /// The audiobook open in the full-screen player. It is presented from the root, so the book page
@@ -23,12 +28,19 @@ struct AudioChapter: Identifiable {
     @Published var sleepDeadline: Date?
     /// Where playback was last known to be, when, and how fast it was going. The player reports its position only twice
     /// a second; the progress bar draws from this clock every frame, so it glides instead of stepping.
-    @Published private(set) var clock = PlaybackClock()
+    /// Not published, for the same reason as `position`; the progress bar reads it every frame while it moves.
+    private(set) var clock = PlaybackClock()
     /// The latest jump, which the bar eases into for a moment instead of snapping.
     @Published private(set) var lastSeek: PlaybackSeek?
     /// A jump the player hasn't reached yet. Until it reports a position near it, or the hold runs out, its older
     /// reports are ignored, so the bar never flicks back to where it was.
     private var pendingSeek: PlaybackSeek?
+    /// When the listening position is next written to the library while playing. Writing it saves the whole library
+    /// and redraws every screen that shows it, which is too much work to do twice a second.
+    private var nextPositionSave = Date.distantPast
+    /// The lock screen's cover for the book playing, made once rather than on every position report.
+    private var nowPlayingArtwork: (cover: String, artwork: MPMediaItemArtwork)?
+    private var nowPlayingArtworkLoading: String?
     @Published var sleepChapterEnd: Double?
     private var sleepBoundary: Any?
     private var sleepTask: Task<Void, Never>?
@@ -56,6 +68,7 @@ struct AudioChapter: Identifiable {
     private var endObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
     private var routeObserver: NSObjectProtocol?
+    private var terminateObserver: NSObjectProtocol?
     private weak var library: Library?
     private var requestID = UUID()
     private var telegramResource: TelegramAudioResource?
@@ -76,7 +89,10 @@ struct AudioChapter: Identifiable {
             else { self.position = self.duration; self.pause(); self.setSleep() }
         } }
     }
-    var chapterIndex: Int { chapters.lastIndex { $0.start <= position + 0.05 } ?? 0 }
+    private func syncChapter() {
+        let index = chapters.lastIndex { $0.start <= position + 0.05 } ?? 0
+        if index != chapterIndex { chapterIndex = index }
+    }
     var chapterStart: Double { chapters.indices.contains(chapterIndex) ? chapters[chapterIndex].start : 0 }
     var chapterEnd: Double { chapters.indices.contains(chapterIndex + 1) ? chapters[chapterIndex + 1].start : duration }
     /// Restarts the bar's clock from the latest known position and speed. While a jump is pending, the clock carries on
@@ -99,11 +115,14 @@ struct AudioChapter: Identifiable {
                 guard let self else { return }
                 let seconds = self.player.currentTime().seconds
                 let reported = seconds.isFinite ? self.trackStart + seconds : self.trackStart
-                if PlaybackMotion.accepts(reported, pending: self.pendingSeek, now: Date()) { self.pendingSeek = nil; self.position = reported }
-                self.playing = self.player.rate > 0
+                let now = Date()
+                if PlaybackMotion.accepts(reported, pending: self.pendingSeek, now: now) { self.pendingSeek = nil; self.position = reported }
+                // Playback that stopped on its own, a stream running dry say, saves where it stopped.
+                if self.playing != (self.player.rate > 0) { self.playing.toggle(); if !self.playing { self.savePosition() } }
                 if let end = self.sleepChapterEnd, self.position >= end { self.stopForSleep() }
-                if let id = self.bookID, let library = self.library {
-                    library.update(id) { $0.audioPosition = self.position; $0.audioModifiedAt = Date(); $0.lastOpenedAt = Date(); if self.duration > 0 { $0.audioDuration = self.duration } }
+                if now >= self.nextPositionSave, let library = self.library {
+                    self.nextPositionSave = now.addingTimeInterval(15)
+                    self.savePosition()
                     PositionSync.shared.pushWhileListening(library: library)
                 }
                 self.publish()
@@ -126,6 +145,10 @@ struct AudioChapter: Identifiable {
         }
         routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             if note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { Task { @MainActor in self?.pause() } }
+        }
+        // Playback saves every 15 seconds; a quit mid-way saves at once rather than losing the rest.
+        terminateObserver = NotificationCenter.default.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.savePosition() }
         }
     }
     func load(_ book: MediaBook, library: Library) async {
@@ -167,12 +190,13 @@ struct AudioChapter: Identifiable {
             if book.streaming {
                 let metadata = try await asset.load(.commonMetadata)
                 for item in metadata {
-                    if item.commonKey == .commonKeyArtwork, let bytes = try? await item.load(.dataValue) {
-                        let name = "\(book.id).jpg"
-                        if let image = UIImage(data: bytes), let jpg = image.jpegData(compressionQuality: 0.9) { try? jpg.write(to: library.file(name)); library.update(book.id) { $0.cover = name } }
+                    // Only a book without a cover takes the embedded one; a cover chosen by hand stays.
+                    if item.commonKey == .commonKeyArtwork, library.book(book.id)?.cover == nil, let bytes = try? await item.load(.dataValue) {
+                        try? await library.setCover(bytes, id: book.id)
                     }
                     if item.commonKey == .commonKeyTitle, let title = try? await item.load(.stringValue), !title.isEmpty { library.update(book.id) { $0.title = title } }
                 }
+                guard requestID == request else { return }
             }
             self.library = library; duration = total; chapters = loaded.sorted { $0.start < $1.start }
             if chapters.first?.start ?? 1 > 0 { chapters.insert(AudioChapter(name: "Opening", start: 0), at: 0) }
@@ -195,7 +219,7 @@ struct AudioChapter: Identifiable {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
             try AVAudioSession.sharedInstance().setActive(true)
             if position >= duration { seek(0) }
-            player.playImmediately(atRate: speed); playing = true; publish()
+            player.playImmediately(atRate: speed); playing = true; nextPositionSave = Date().addingTimeInterval(15); publish()
         } catch { self.error = error.localizedDescription }
     }
     func pause() {
@@ -203,7 +227,16 @@ struct AudioChapter: Identifiable {
         // Stop the bar where the audio stopped, not where the last twice-a-second report left it.
         let seconds = player.currentTime().seconds
         if pendingSeek == nil, seconds.isFinite { position = trackStart + seconds }
-        playing = false; publish(); if let library { PositionSync.shared.exchange(library: library) }
+        playing = false; savePosition(); publish(); if let library { PositionSync.shared.exchange(library: library) }
+    }
+    /// Writes where the listener is to the library now. Playback does it every 15 seconds; pausing, jumping and the
+    /// app going to the background do it at once.
+    func savePosition() {
+        guard let id = bookID, let library, let stored = library.book(id) else { return }
+        // Only real progress is saved. An unchanged position stamped as new would win over newer listening on another
+        // device when positions are exchanged, pulling that device back.
+        guard abs(stored.audioPosition - position) >= 1 else { return }
+        library.update(id) { $0.audioPosition = position; $0.audioModifiedAt = Date(); $0.lastOpenedAt = Date(); if duration > 0 { $0.audioDuration = duration } }
     }
     func stopForOffline() { pause(); telegramResource?.cancel(); telegramResource = nil; player.replaceCurrentItem(with: nil); bookID = nil }
     /// Jumps playback. Repeated jumps build on the pending target, so three quick taps of +30 s move 90 s. `eased: false`
@@ -227,7 +260,7 @@ struct AudioChapter: Identifiable {
         player.seek(to: CMTime(seconds: max(0, position - trackStart), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             Task { @MainActor in if finished, let self, self.pendingSeek == jump { self.pendingSeek = nil } }
         }
-        if let id = bookID { library?.update(id) { $0.audioPosition = position; $0.audioModifiedAt = Date() } }; publish()
+        savePosition(); publish()
     }
     private func publish() {
         resyncClock()
@@ -238,7 +271,13 @@ struct AudioChapter: Identifiable {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: max(0, position - chapterStart),
             MPNowPlayingInfoPropertyPlaybackRate: playing ? Double(speed) : 0.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue]
-        if let name = book.cover, let library, let image = UIImage(contentsOfFile: library.file(name).path) { info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image } }
+        if let name = book.cover {
+            if let made = nowPlayingArtwork, made.cover == name { info[MPMediaItemPropertyArtwork] = made.artwork }
+            else if nowPlayingArtworkLoading != name, let library { nowPlayingArtworkLoading = name; Task { @MainActor in
+                guard let image = await CoverImages.shared.load(library.file(name), points: 600, scale: 1), self.library?.book(id)?.cover == name else { return }
+                nowPlayingArtwork = (name, MPMediaItemArtwork(boundsSize: image.size) { _ in image }); publish()
+            } }
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 }
@@ -319,6 +358,7 @@ struct PlayerScreen: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var audio: AudioPlayer
     @Environment(\.closePlayer) private var closePlayer
+    @Environment(\.displayScale) private var displayScale
     @AppStorage("accent") private var accentName = "Aquamarine"
     @State private var cover: UIImage?
     /// The chapter a drag started in, held so playback crossing into the next chapter cannot move the scale mid-drag.
@@ -344,12 +384,13 @@ struct PlayerScreen: View {
             .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 8)
             .tint(accent)
             .sheet(isPresented: $chaptersShown) { ChapterTimeline() }
-            .task(id: book.cover) { cover = book.cover.flatMap { UIImage(contentsOfFile: library.file($0).path) } }
+            .task(id: book.cover) { cover = nil; if let name = book.cover { cover = await CoverImages.shared.load(library.file(name), points: PlayerCard.coverPoints, scale: displayScale) } }
             .task { await audio.load(book, library: library) }
         }
     }
     @ViewBuilder private func artwork(_ book: MediaBook) -> some View {
-        if let cover {
+        // Drawn from memory on the first frame when the mini player has already decoded it, so the card never opens empty.
+        if let cover = cover ?? book.cover.flatMap({ CoverImages.shared.cached(library.file($0), points: PlayerCard.coverPoints, scale: displayScale) }) {
             Image(uiImage: cover).resizable().scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .shadow(color: .black.opacity(0.18), radius: 20, y: 10)
@@ -379,7 +420,10 @@ struct PlayerScreen: View {
     /// Scrubs within the current chapter, as the lock screen does, so a long book still gives fine control. It redraws
     /// every frame while playing or easing into a jump, and rests otherwise.
     private var scrubber: some View {
-        TimelineView(.animation(paused: !audio.playing && audio.lastSeek == nil)) { context in
+        // Easing into a jump draws every frame; otherwise only as often as the bar moves a pixel or so, since on a long
+        // chapter it creeps a fraction of a point a second and redrawing it 120 times a second would only cost battery.
+        let length = max(1, audio.chapterEnd - audio.chapterStart)
+        return TimelineView(.animation(minimumInterval: audio.lastSeek == nil ? min(0.5, length / 1000) : nil, paused: !audio.playing && audio.lastSeek == nil)) { context in
             scrubber(at: context.date)
         }
     }
@@ -470,6 +514,10 @@ struct ChapterTimeline: View {
     private let rail = Color(uiColor: .separator)
     private let surface = Color(uiColor: .systemBackground)
     var body: some View {
+        // The player doesn't publish its position, so the time left and the current chapter's progress refresh on their own.
+        TimelineView(.periodic(from: .now, by: 1)) { _ in timeline }
+    }
+    @ViewBuilder private var timeline: some View {
         let current = audio.chapterIndex
         let left = Duration.seconds(max(0, audio.duration - audio.position)).formatted(.units(allowed: [.hours, .minutes], width: .narrow))
         VStack(alignment: .leading, spacing: 0) {

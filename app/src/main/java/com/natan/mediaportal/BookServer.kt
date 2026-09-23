@@ -206,7 +206,16 @@ class BookServer(private val context: Context, private val credentialNamespace: 
         val account = account() ?: return@withContext null
         val url = title.coverUrl ?: return@withContext null
         val temp = File.createTempFile("cover-", ".jpg", context.cacheDir)
-        try { request(account, url, temp, 8L * 1024 * 1024); temp.copyTo(file, true); file }
+        try {
+            request(account, url, temp, 8L * 1024 * 1024)
+            // Only an image is kept: a saved error page would stand in for the cover and stop it ever being fetched again.
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(temp.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+            // Moved into place whole, so a cover being read at the same moment is never half written.
+            if (!temp.renameTo(file)) temp.copyTo(file, true)
+            file
+        }
         catch (_: Exception) { null } finally { temp.delete() }
     }
     /**
