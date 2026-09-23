@@ -126,6 +126,13 @@ Every release adds an entry here. Full notes live in [docs/releases](docs/releas
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
 
+### 0.9.8
+
+Listening positions move between phones reliably: a phone set up fresh catches up, opening a book
+no longer rewinds the other phone, and a paused book takes a newer position from elsewhere. On
+iPhone, switching audiobooks keeps the one you left where it was. Only Telegram audiobooks sync,
+through the notes server. [Full notes](docs/releases/v0.9.8.md).
+
 ### 0.9.7
 
 The player's animation runs at the screen's full rate on iPhone, up to 120 Hz, and no longer stalls
