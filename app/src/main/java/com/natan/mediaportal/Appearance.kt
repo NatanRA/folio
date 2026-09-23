@@ -20,32 +20,49 @@ internal data class Appearance(val mode: String = "Dark", val palette: String = 
 internal val LocalAppearance = staticCompositionLocalOf { Appearance() }
 internal val LocalChangeAppearance = staticCompositionLocalOf<(Appearance) -> Unit> { {} }
 
+/** The palettes with fixed colours, in the order the appearance sheet lists them. "Wallpaper" follows on Android 12+. */
+internal val PortalPalettes = listOf("Aquamarine", "Blue", "Lilac", "Peach", "Sakura")
+
+/** A palette's accent: a deep shade for light schemes and a pale one for dark schemes, both at least 4.5:1 on that scheme's surfaces. */
+internal fun paletteAccent(palette: String, dark: Boolean): Color = when (palette) {
+    "Blue" -> if (dark) Color(0xFFA8C7FA) else Color(0xFF245DB2)
+    "Lilac" -> if (dark) Color(0xFFD0BCFF) else Color(0xFF6750A4)
+    "Peach" -> if (dark) Color(0xFFFFB59A) else Color(0xFF98452A)
+    "Sakura" -> if (dark) Color(0xFFF4A6BC) else Color(0xFFA43455)
+    else -> if (dark) Color(0xFF58DCCB) else Color(0xFF006B60)
+}
+
+/** Strongest accent tint that accent-coloured text can sit on and stay 4.5:1 in light schemes. */
+internal const val AccentTextTint = .12f
+
+internal fun portalColorScheme(primary: Color, dark: Boolean): ColorScheme = if (dark) darkColorScheme(
+    primary = primary, onPrimary = Color(0xFF101819), primaryContainer = Color(0xFF26343A), onPrimaryContainer = primary,
+    secondary = primary, onSecondary = Color(0xFF101819), secondaryContainer = Color(0xFF26343A), onSecondaryContainer = Color(0xFFDCE8EC),
+    background = Color(0xFF0B0D12), surface = Color(0xFF0B0D12), onBackground = Color(0xFFE4E5EB), onSurface = Color(0xFFE4E5EB),
+    surfaceContainer = Color(0xFF171C25), surfaceContainerLow = Color(0xFF141820), surfaceContainerHigh = Color(0xFF222833), surfaceVariant = Color(0xFF222833), onSurfaceVariant = Color(0xFFB6BDC9)
+) else lightColorScheme(
+    primary = primary, onPrimary = Color.White, primaryContainer = Color(0xFFE0ECE8), onPrimaryContainer = primary,
+    secondary = primary, secondaryContainer = Color(0xFFE0E8EC), onSecondaryContainer = Color(0xFF233139),
+    background = Color(0xFFF7F9FC), surface = Color(0xFFF7F9FC), onBackground = Color(0xFF191C20), onSurface = Color(0xFF191C20),
+    surfaceContainer = Color(0xFFEBEEF4), surfaceContainerLow = Color(0xFFF0F3F8), surfaceContainerHigh = Color(0xFFE2E6ED), surfaceVariant = Color(0xFFE2E6ED), onSurfaceVariant = Color(0xFF505964)
+)
+
+/**
+ * The app's theme from the saved appearance. [darkOverride] replaces the light/dark mode and [accentOverride]
+ * the palette's accent, for screens that follow something other than the app setting (see [ReaderTheme]).
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun PortalTheme(styleWindow: Boolean = true, content: @Composable () -> Unit) {
+internal fun PortalTheme(styleWindow: Boolean = true, darkOverride: Boolean? = null, accentOverride: Color? = null, content: @Composable () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("appearance", 0) }
     var appearance by remember { mutableStateOf(Appearance(prefs.getString("mode", "Dark")!!, prefs.getString("palette", "Aquamarine")!!)) }
-    val dark = when (appearance.mode) { "Light" -> false; "System" -> isSystemInDarkTheme(); else -> true }
-    val primary = when (appearance.palette) {
-        "Blue" -> if (dark) Color(0xFFA8C7FA) else Color(0xFF245DB2)
-        "Lilac" -> if (dark) Color(0xFFD0BCFF) else Color(0xFF6750A4)
-        "Peach" -> if (dark) Color(0xFFFFB59A) else Color(0xFF98452A)
-        else -> if (dark) Color(0xFF58DCCB) else Color(0xFF006B60)
+    val dark = darkOverride ?: when (appearance.mode) { "Light" -> false; "System" -> isSystemInDarkTheme(); else -> true }
+    val scheme = when {
+        accentOverride != null -> portalColorScheme(accentOverride, dark)
+        appearance.palette == "Wallpaper" && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        else -> portalColorScheme(paletteAccent(appearance.palette, dark), dark)
     }
-    val scheme = if (appearance.palette == "Wallpaper" && Build.VERSION.SDK_INT >= 31) {
-        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    } else if (dark) darkColorScheme(
-        primary = primary, onPrimary = Color(0xFF101819), primaryContainer = Color(0xFF26343A), onPrimaryContainer = primary,
-        secondary = primary, onSecondary = Color(0xFF101819), secondaryContainer = Color(0xFF26343A), onSecondaryContainer = Color(0xFFDCE8EC),
-        background = Color(0xFF0B0D12), surface = Color(0xFF0B0D12), onBackground = Color(0xFFE4E5EB), onSurface = Color(0xFFE4E5EB),
-        surfaceContainer = Color(0xFF171C25), surfaceContainerLow = Color(0xFF141820), surfaceContainerHigh = Color(0xFF222833), surfaceVariant = Color(0xFF222833), onSurfaceVariant = Color(0xFFB6BDC9)
-    ) else lightColorScheme(
-        primary = primary, onPrimary = Color.White, primaryContainer = Color(0xFFE0ECE8), onPrimaryContainer = primary,
-        secondary = primary, secondaryContainer = Color(0xFFE0E8EC), onSecondaryContainer = Color(0xFF233139),
-        background = Color(0xFFF7F9FC), surface = Color(0xFFF7F9FC), onBackground = Color(0xFF191C20), onSurface = Color(0xFF191C20),
-        surfaceContainer = Color(0xFFEBEEF4), surfaceContainerLow = Color(0xFFF0F3F8), surfaceContainerHigh = Color(0xFFE2E6ED), surfaceVariant = Color(0xFFE2E6ED), onSurfaceVariant = Color(0xFF505964)
-    )
     SideEffect {
         (context as? Activity)?.takeIf { styleWindow }?.let { activity ->
             activity.window.decorView.setBackgroundColor(scheme.background.toArgb())
@@ -65,6 +82,14 @@ internal fun PortalTheme(styleWindow: Boolean = true, content: @Composable () ->
     }
 }
 
+/**
+ * The reader's controls and sheets follow its paper, not the app's mode: a light scheme on light papers and a dark
+ * one on dark papers, with the paper's own accent when it has one and the app palette's otherwise.
+ */
+@Composable
+internal fun ReaderTheme(paper: ReaderPaper, content: @Composable () -> Unit) =
+    PortalTheme(styleWindow = false, darkOverride = paper.dark, accentOverride = paper.accent, content = content)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun AppearanceSheet(onDismiss: () -> Unit) {
@@ -81,7 +106,7 @@ internal fun AppearanceSheet(onDismiss: () -> Unit) {
             }
             Text("Colour palette", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                (listOf("Aquamarine", "Blue", "Lilac", "Peach") + if (Build.VERSION.SDK_INT >= 31) listOf("Wallpaper") else emptyList()).forEach { palette ->
+                (PortalPalettes + if (Build.VERSION.SDK_INT >= 31) listOf("Wallpaper") else emptyList()).forEach { palette ->
                     FilterChip(selected = current.palette == palette, onClick = { change(current.copy(palette = palette)) }, label = { Text(palette) }, modifier = Modifier.heightIn(min = 48.dp))
                 }
             }

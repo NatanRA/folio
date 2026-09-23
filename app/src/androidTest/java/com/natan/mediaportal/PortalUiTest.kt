@@ -5,6 +5,7 @@ import android.net.Uri
 import android.view.View
 import org.readium.r2.shared.publication.services.positions
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -217,22 +218,27 @@ class PortalUiTest {
                     displayedPage = counter.text.toString().substringBefore(" / ").removePrefix("~").toInt()
                     counter.performClick()
                 }
-                compose.onNodeWithText("Pages", useUnmergedTree = true).assertIsDisplayed()
+                compose.waitUntil(5000) { compose.onAllNodesWithTag("page-flip-book").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithTag("page-flip-book").assert(SemanticsMatcher("shows page $displayedPage") { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.StateDescription)?.startsWith("Page $displayedPage of ${positions.size}") == true })
                 // A reflowed screen can begin at a different locator than the requested midpoint.
                 val nextPage = (displayedPage + 1).coerceAtMost(positions.size)
-                compose.waitUntil(5000) { compose.onNodeWithContentDescription("Go to page $nextPage").isDisplayed() }
                 instrumentation.waitForIdleSync()
                 delay(400)
                 instrumentation.uiAutomation.takeScreenshot().let { bitmap ->
                     File("/sdcard/Android/media/${context.packageName}/test-output").apply { mkdirs() }.resolve("reader-page-picker.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
                 }
-                compose.onNodeWithContentDescription("Go to page $nextPage").performClick()
+                // TalkBack's "Next page" action turns the book; the button opens that page.
+                val actions = compose.onNodeWithTag("page-flip-book").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions]
+                compose.runOnUiThread { actions.single { it.label == "Next page" }.action() }
+                compose.onNodeWithText("Open page $nextPage").performClick()
                 compose.waitUntil(10000) {
                     var atPage = false
                     reader.onActivity { atPage = it.window.decorView.findViewWithTag<android.widget.TextView>("reader-page-counter").text.toString() == "~$nextPage / ${positions.size}" }
                     atPage
                 }
                 reader.onActivity { it.window.decorView.findViewWithTag<android.widget.TextView>("reader-page-counter").performClick() }
+                // The page count in the header types a page.
+                compose.onNodeWithTag("page-picker-header").performClick()
                 compose.onNodeWithText("Page number").performTextInput("999999")
                 compose.onNodeWithText("Go").assertIsNotEnabled()
                 compose.onNodeWithText("Page number").performTextClearance()
@@ -244,7 +250,8 @@ class PortalUiTest {
                     atPage
                 }
                 reader.onActivity { it.window.decorView.findViewWithTag<android.widget.TextView>("reader-page-counter").performClick() }
-                compose.onNodeWithContentDescription("Page 3, current page").assertIsDisplayed()
+                compose.waitUntil(5000) { compose.onAllNodesWithTag("page-flip-book").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithTag("page-flip-book").assert(SemanticsMatcher("shows page 3") { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.StateDescription)?.startsWith("Page 3 of ${positions.size}") == true })
                 compose.waitForIdle()
                 val themeShot = File("/sdcard/Android/media/${context.packageName}/test-output").apply { mkdirs() }
                 instrumentation.uiAutomation.takeScreenshot().let { bitmap ->

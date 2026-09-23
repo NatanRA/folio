@@ -44,6 +44,9 @@ Manual two-way approximate reading-position sync is available under Server → K
 - Native Kotlin / Compose library and title screens.
 - Import EPUB, PDF, CBZ and audio through the document picker; copy into private app storage for offline access.
 - Readium EPUB rendering with Home, Previous and Next controls, plus native PDF/comic viewing.
+- The page picker is an open book: swipe to turn pages in 3D, flick to riffle, or drag the page edges to jump, with a haptic tick for each page and a firmer one at each new chapter.
+- Five reading papers: white, sepia, sakura (cherry-blossom pink), night and indigo. The reader's buttons and page numbers follow the paper, light on light pages and dark on dark ones, whatever the app's own appearance.
+- Aquamarine, blue, lilac, peach and sakura accents, each with a deeper shade for light mode so accent text stays readable.
 - Media3 audio playback with seeking and separate persisted timestamp.
 - A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet.
 - Attach an audio file to an ebook title (or an ebook to an audio title).

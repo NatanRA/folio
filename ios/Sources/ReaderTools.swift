@@ -154,7 +154,7 @@ struct ReaderToolsSheet: View {
                     }
                 case .bookmarks, .notes:
                     if tab == .notes { Button("Sync & export") { transfer = true }.padding(.vertical, 8) }
-                    if tab == .bookmarks { Button("Bookmark this page") { model.addBookmark() }.buttonStyle(.borderedProminent).padding(.vertical, 8) }
+                    if tab == .bookmarks { Button("Bookmark this page") { model.addBookmark() }.buttonStyle(.borderedProminent).foregroundStyle(portalOnAccent).padding(.vertical, 8) }
                     if tab == .notes { TextField("Search notes", text: $query).textFieldStyle(.roundedBorder).padding(.horizontal) }
                     let filtered = model.marks.filter { $0.bookmark == (tab == .bookmarks) && (tab == .bookmarks || query.isEmpty || ($0.quote + $0.note).localizedCaseInsensitiveContains(query)) }
                     if filtered.isEmpty { ContentUnavailableView(tab == .bookmarks ? "No bookmarks yet" : "No matching notes", systemImage: tab == .bookmarks ? "bookmark" : "highlighter", description: Text(tab == .bookmarks ? "Save a place to return to later." : "Select book text to highlight it or add a note.")) }

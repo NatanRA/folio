@@ -1,6 +1,10 @@
 package com.natan.mediaportal
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -16,8 +20,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,12 +66,7 @@ internal fun ReaderMenu(syncEnabled: () -> Boolean, sync: () -> Unit, pinnedInit
             Text("Reader options", style = MaterialTheme.typography.headlineSmall)
             Text("Saved for all books on this device", style = MaterialTheme.typography.bodyMedium)
             Text("Paper", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                org.readium.r2.navigator.preferences.Theme.entries.forEach { theme ->
-                    FilterChip(appearance.theme == theme, { changeAppearance(appearance.copy(theme = theme)) },
-                        label = { Text(when (theme) { org.readium.r2.navigator.preferences.Theme.LIGHT -> "White"; org.readium.r2.navigator.preferences.Theme.DARK -> "Night"; else -> "Sepia" }) }, modifier = Modifier.heightIn(min = 48.dp))
-                }
-            }
+            PaperPicker(appearance.paper) { changeAppearance(appearance.copy(paper = it)) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(false to "Serif", true to "Sans serif").forEach { (sans, label) ->
                     FilterChip(appearance.sans == sans, { changeAppearance(appearance.copy(sans = sans)) }, label = { Text(label) }, modifier = Modifier.heightIn(min = 48.dp))
@@ -78,6 +82,31 @@ internal fun ReaderMenu(syncEnabled: () -> Boolean, sync: () -> Unit, pinnedInit
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { changeAppearance(ReaderAppearance()) }) { Text("Reset appearance") }
                 FilledTonalButton(onClick = { options = false }) { Text("Done") }
+            }
+        }
+    }
+}
+
+/** Swatches that show each page colour with its ink, so a paper can be judged before it is picked. Matches iOS. */
+@Composable
+private fun PaperPicker(selected: ReaderPaper, select: (ReaderPaper) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val tile = RoundedCornerShape(12.dp)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ReaderPaper.entries.forEach { paper ->
+            val chosen = paper == selected
+            // One button per paper; its visible text is decoration for the content description.
+            Column(Modifier.weight(1f).clip(tile).selectable(chosen, role = Role.Button) { select(paper) }
+                .semantics { contentDescription = paper.name },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.fillMaxWidth().height(52.dp).background(paper.page, tile)
+                    .border(if (chosen) 3.dp else 1.dp, if (chosen) colors.primary else colors.outlineVariant, tile),
+                    contentAlignment = Alignment.Center) {
+                    Text("Aa", color = paper.ink, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.titleLarge, modifier = Modifier.clearAndSetSemantics {})
+                }
+                Text(paper.name, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+                    color = if (chosen) colors.onSurface else colors.onSurfaceVariant, modifier = Modifier.clearAndSetSemantics {})
             }
         }
     }

@@ -13,14 +13,16 @@ The device build is packaged as an **unsigned IPA**. Import the IPA in SideStore
 - Home, searchable library, downloads and server tabs using native iOS navigation.
 - Local EPUB and audiobook import through Files. E-book and audio can share one cover, with independent saved positions.
 - Embedded artwork extraction and manual JPG/PNG replacement.
-- Readium EPUB pagination, chapters, estimated-page grid, left-aligned serif text, text-size/scroll options and an end-of-book completion action.
+- Readium EPUB pagination, chapters, left-aligned serif text, text-size/scroll options and an end-of-book completion action.
+- A page picker shaped like an open book: swipe a page to turn it in 3D, flick to riffle up to 20 pages, or drag along the page edges to jump anywhere, lifting the finger above them for fine control. At page 1 the book lies closed on its cover and opens onto the inside of the cover, like a real book. Each page shows its chapter and first words from the book, the reader's place is marked with a ribbon, and pages tick, land and knock at new chapters through haptics. Tap the page number to type one.
 - Background audio, iOS Now Playing commands and chapter-relative progress for chapter metadata recognized by AVFoundation, on the lock screen and in the app.
 - A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet.
 - BookLore OPDS browsing/downloads with cached local books and Keychain credentials.
 - Manual approximate KOReader progress receive/send and undo; sending requires the companion plugin in `../koreader`.
-- System/light/dark appearance with aquamarine, blue, lilac and peach accents.
+- System/light/dark appearance with aquamarine, blue, lilac, peach and sakura accents. Each accent has a deeper shade for light mode, so accent text stays at least 4.5:1 against every surface it sits on.
+- A book page that fits between the navigation bar and the tab bar or mini player without scrolling: the cover shrinks to the space left, and the page only scrolls at very large text sizes.
 - In-book search, bookmarks, nested chapter navigation, highlights, editable notes, native Look Up and saved vocabulary.
-- Reader paper, font, line-spacing and margin settings saved across books.
+- Reader paper (white, sepia, sakura, night or indigo), font, line-spacing and margin settings saved across books. The reader's controls follow the paper rather than the app's appearance, and sakura and indigo bring their own blossom and gold accents.
 - Annotation JSON export/import and optional private sync with Android. Identical book files are required. See `../services/annotations/README.md` for the separate service configuration.
 - Automatic listening-position sync for Telegram audiobooks over the same annotation service, with nothing to tap: positions are sent while listening, on pause and on backgrounding, and are collected on launch and after a Telegram scan. It is off until Notes sync is connected, and a failure changes no saved position.
 - Audiobook playback speed and sleep timer, including end of chapter.

@@ -2,6 +2,42 @@ import SwiftUI
 import ReadiumShared
 import ReadiumNavigator
 
+/// A reading paper: the page colour, the text colour, and whether the reader's controls sit light or dark on it.
+/// The controls follow the paper rather than the app's appearance, so a white page never carries dark controls.
+struct ReaderPaper: Identifiable, Equatable {
+    let name: String
+    let theme: Theme
+    /// Page and text colours for papers Readium has no theme for.
+    var page: UInt32? = nil
+    var ink: UInt32? = nil
+    /// The paper's own accent for the reader and its sheets; the others use the app's accent. It keeps both
+    /// shades because the sheets follow the app's appearance, not the paper.
+    var accent: AccentShades? = nil
+    var id: String { name }
+    var dark: Bool { theme == .dark }
+    var colorScheme: ColorScheme { dark ? .dark : .light }
+    var pageColor: SwiftUI.Color {
+        if let page { return SwiftUI.Color(uiColor: UIColor(rgb: page)) }
+        return dark ? .black : theme == .sepia ? SwiftUI.Color(red: 0.98, green: 0.957, blue: 0.91) : .white
+    }
+    var inkColor: SwiftUI.Color {
+        if let ink { return SwiftUI.Color(uiColor: UIColor(rgb: ink)) }
+        return dark ? .white : SwiftUI.Color(white: 0.07)
+    }
+
+    static let all = [
+        ReaderPaper(name: "White", theme: .light),
+        ReaderPaper(name: "Sepia", theme: .sepia),
+        // Cherry-blossom washi with plum-black ink.
+        ReaderPaper(name: "Sakura", theme: .light, page: 0xF9EDEF, ink: 0x33262B, accent: .sakura),
+        ReaderPaper(name: "Night", theme: .dark),
+        // Indigo-dyed night paper with warm off-white ink, softer than black, and gold controls.
+        ReaderPaper(name: "Indigo", theme: .dark, page: 0x1B2130, ink: 0xE4DED2, accent: AccentShades(light: 0x7C591C, dark: 0xE3BD6B)),
+    ]
+    static func named(_ name: String) -> ReaderPaper { all.first { $0.name == name } ?? all[0] }
+    func accentColor(app: String) -> SwiftUI.Color { accent?.color ?? portalAccent(app) }
+}
+
 @MainActor final class ReaderModel: ObservableObject, EPUBNavigatorDelegate {
     @Published var navigator: EPUBNavigatorViewController?
     @Published var positions: [Locator] = []
@@ -56,11 +92,13 @@ import ReadiumNavigator
         } catch { self.error = error.localizedDescription }
     }
     var preferences: EPUBPreferences {
-        EPUBPreferences(fontFamily: sans ? .sansSerif : .serif, fontSize: fontSize, lineHeight: lineSpacing, pageMargins: margins,
+        EPUBPreferences(backgroundColor: readerPaper.page.map { Color(rawValue: Int($0)) },
+                        fontFamily: sans ? .sansSerif : .serif, fontSize: fontSize, lineHeight: lineSpacing, pageMargins: margins,
                         paragraphIndent: 1.25, paragraphSpacing: 0, publisherStyles: false,
-                        scroll: scrolling, textAlign: .left, theme: paper == "Night" ? .dark : paper == "Sepia" ? .sepia : .light)
+                        scroll: scrolling, textAlign: .left, textColor: readerPaper.ink.map { Color(rawValue: Int($0)) }, theme: readerPaper.theme)
     }
-    var paperColor: SwiftUI.Color { paper == "Night" ? .black : paper == "Sepia" ? SwiftUI.Color(red: 0.98, green: 0.957, blue: 0.91) : .white }
+    var readerPaper: ReaderPaper { .named(paper) }
+    var paperColor: SwiftUI.Color { readerPaper.pageColor }
     func apply() {
         let defaults = UserDefaults.standard
         defaults.set(fontSize, forKey: "reader.fontSize"); defaults.set(scrolling, forKey: "reader.scrolling")
@@ -95,6 +133,7 @@ struct ReaderScreen: View {
     @State private var tool: ReaderTool?
     @State private var sync = false
     @State private var vocabulary = false
+    @AppStorage("accent") private var appAccent = "Aquamarine"
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -125,7 +164,7 @@ struct ReaderScreen: View {
                 VStack(spacing: 0) {
                     if model.current >= model.positions.count && !model.positions.isEmpty {
                         Button(library.book(id)?.finished == true ? "Finished · Undo" : "Mark as finished") { library.update(id) { $0.finished.toggle() } }
-                            .buttonStyle(.borderedProminent).padding(.top, 8).frame(maxWidth: .infinity).background(model.paperColor)
+                            .buttonStyle(.borderedProminent).foregroundStyle(portalOnAccent).padding(.top, 8).frame(maxWidth: .infinity).background(model.paperColor)
                     }
                     if model.controls {
                         HStack(spacing: 0) {
@@ -140,26 +179,12 @@ struct ReaderScreen: View {
             .task { if let book = library.book(id) { await model.open(book, library: library) } }
             .sheet(isPresented: $vocabulary) { VocabularyView(model: model) }
             .sheet(item: $model.dictionary) { DictionarySheet(word: $0.word) }
-            .sheet(isPresented: $pages) {
-                NavigationStack {
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 12) {
-                            ForEach(Array(model.positions.indices), id: \.self) { i in
-                                PageTile(number: i + 1, selected: model.current == i + 1) {
-                                    Task { await model.jump(i); pages = false }
-                                }
-                            }
-                        }.padding()
-                        Text("Estimated pages; layout changes with text size.").font(.footnote).foregroundStyle(.secondary).padding()
-                    }.background(SwiftUI.Color(uiColor: .systemGroupedBackground)).navigationTitle("Pages")
-                    .toolbar { Button("Done") { pages = false } }
-                }
-            }
+            .sheet(isPresented: $pages) { PageFlipSheet(model: model, here: model.current) }
             .sheet(isPresented: $options) {
                 NavigationStack {
                     Form {
                         Section("Type") {
-                            Picker("Paper", selection: $model.paper) { ForEach(["White", "Sepia", "Night"], id: \.self) { Text($0) } }
+                            PaperPicker(selection: $model.paper)
                             Toggle("Sans serif", isOn: $model.sans)
                             Slider(value: $model.fontSize, in: 0.8...2, step: 0.1).accessibilityLabel("Text size")
                             Text("Text size \(Int(model.fontSize * 100))%")
@@ -180,20 +205,33 @@ struct ReaderScreen: View {
             .alert("Something needs attention", isPresented: Binding(get: { model.error != nil && model.navigator != nil }, set: { if !$0 { model.error = nil } })) { Button("OK") { model.error = nil } } message: { Text(model.error ?? "") }
             .sheet(isPresented: $sync) { ReaderSyncSheet(model: model) }
         }
+        .environment(\.colorScheme, model.readerPaper.colorScheme)
+        .tint(model.readerPaper.accentColor(app: appAccent))
     }
 }
 
-private struct PageTile: View {
-    let number: Int
-    let selected: Bool
-    let action: () -> Void
+/// Paper swatches that show each page colour with its text colour, so a theme can be judged before it is picked.
+private struct PaperPicker: View {
+    @Binding var selection: String
     var body: some View {
-        Button(action: action) {
-            SwiftUI.Text(String(number))
-                .font(.title2.weight(.semibold))
-                .frame(maxWidth: .infinity).frame(height: 94)
-                .foregroundStyle(selected ? SwiftUI.Color.black : SwiftUI.Color.primary)
-                .background(selected ? SwiftUI.Color.accentColor : SwiftUI.Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
-        }.accessibilityLabel("Page \(number)")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Paper").font(.subheadline).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(ReaderPaper.all) { paper in
+                    let selected = paper.name == selection
+                    Button { selection = paper.name } label: {
+                        VStack(spacing: 6) {
+                            Text("Aa").font(.system(.title3, design: .serif).weight(.medium)).foregroundStyle(paper.inkColor)
+                                .frame(maxWidth: .infinity).frame(height: 52)
+                                .background(paper.pageColor, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? SwiftUI.Color.accentColor : SwiftUI.Color(uiColor: .separator), lineWidth: selected ? 3 : 1) }
+                            Text(paper.name).font(.caption).foregroundStyle(selected ? SwiftUI.Color.primary : SwiftUI.Color.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(paper.name).accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+        }.padding(.vertical, 4)
     }
 }

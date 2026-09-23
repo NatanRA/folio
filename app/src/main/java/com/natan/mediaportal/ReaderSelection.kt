@@ -52,7 +52,7 @@ internal fun ReaderSelectionToolbar(bounds: android.graphics.RectF, act: (Select
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = { act(SelectionAction.Highlight) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Highlight") }
                 FilledTonalButton(onClick = { act(SelectionAction.Define) }, modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .16f), contentColor = MaterialTheme.colorScheme.primary)) {
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = AccentTextTint), contentColor = MaterialTheme.colorScheme.primary)) {
                     Icon(Icons.Outlined.MenuBook, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text("Define")
                 }
                 IconButton(onClick = { act(null) }, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.MoreHoriz, "More selection actions") }

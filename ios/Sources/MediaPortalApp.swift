@@ -62,12 +62,36 @@ func applyWindowScheme(_ appearance: String) {
     }
 }
 
+let portalAccentNames = ["Aquamarine", "Blue", "Lilac", "Peach", "Sakura"]
+
+/// An accent as a deep shade for light surfaces and a pale one for dark surfaces. Both keep text at least
+/// 4.6:1 against every background the app draws them on, including the accent's own tinted cards.
+struct AccentShades: Equatable {
+    let light: UInt32
+    let dark: UInt32
+    var color: Color { Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: dark) : UIColor(rgb: light) }) }
+}
+
 func portalAccent(_ name: String) -> Color {
     switch name {
-    case "Blue": return Color(red: 0.30, green: 0.55, blue: 1)
-    case "Lilac": return Color(red: 0.69, green: 0.53, blue: 0.95)
-    case "Peach": return Color(red: 0.95, green: 0.55, blue: 0.37)
-    default: return Color(red: 0.20, green: 0.72, blue: 0.65)
+    case "Blue": AccentShades(light: 0x245CB0, dark: 0x89B4FF).color
+    case "Lilac": AccentShades(light: 0x6750A4, dark: 0xC3A5F2).color
+    case "Peach": AccentShades(light: 0x98452A, dark: 0xF2A072).color
+    case "Sakura": AccentShades.sakura.color
+    default: AccentShades(light: 0x006A62, dark: 0x39C4B2).color
+    }
+}
+
+extension AccentShades {
+    static let sakura = AccentShades(light: 0xA43455, dark: 0xF4A6BC)
+}
+
+/// Text and icons drawn on a filled accent: white on the deep light-mode shades, black on the pale dark-mode ones.
+let portalOnAccent = Color(UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
+
+extension UIColor {
+    convenience init(rgb: UInt32) {
+        self.init(red: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
     }
 }
 
@@ -109,6 +133,7 @@ struct PortalHome: View {
     @State private var importChoice = false
     @State private var appearance = false
     @State private var resultsHeight: CGFloat = 0
+    @State private var miniPlayerHeight: CGFloat = 0
     /// A book opened from search is pushed on the visible tab's own stack, so the tab bar stays.
     @State private var pushedBook: (tab: Int, id: String)?
     var body: some View {
@@ -240,7 +265,7 @@ struct PortalHome: View {
                         ContentUnavailableView {
                             Label(search.isEmpty ? (downloads ? "No downloads yet" : "Your library starts here") : "No matching titles", systemImage: "books.vertical")
                         } description: { Text(search.isEmpty ? "Add an e-book or audiobook, or connect your BookLore library." : "Try another title or author.") }
-                        actions: { if search.isEmpty { Button("Add a book") { importChoice = true }.buttonStyle(.borderedProminent) } }
+                        actions: { if search.isEmpty { Button("Add a book") { importChoice = true }.buttonStyle(.borderedProminent).foregroundStyle(portalOnAccent) } }
                     } else {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 20, alignment: .top)], alignment: .leading, spacing: 24) {
                             ForEach(filtered) { book in
@@ -277,7 +302,9 @@ struct PortalHome: View {
             }
             .refreshable { guard let account = server.account else { return }; do { try await server.refresh(account, library: library) } catch { library.error = error.localizedDescription } }
             .navigationDestination(item: pushedBinding(for: tabIndex)) { id in BookDetail(id: id) }
-        }.safeAreaInset(edge: .bottom) { miniPlayer(tab: tabIndex) }
+        }
+        .environment(\.miniPlayerClearance, audio.bookID == nil ? 0 : miniPlayerHeight)
+        .safeAreaInset(edge: .bottom) { miniPlayer(tab: tabIndex) }
     }
     /// Inset inside each tab, where the tab bar has already taken its space, so it sits above the bar.
     /// Inset around the whole `TabView` instead, it was drawn over the tab bar and left no way to
@@ -308,6 +335,7 @@ struct PortalHome: View {
             .miniPlayerBackground()
             .zoomSource(id: "mini-player", in: playerZoom, active: owner == tab)
             .padding(.horizontal, 20).padding(.bottom, 8)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { miniPlayerHeight = $0 }
         }
     }
 }
@@ -321,29 +349,15 @@ struct BookDetail: View {
     @State private var importer = false
     @State private var audioImport = false
     @State private var coverImport = false
+    @Environment(\.miniPlayerClearance) private var miniPlayerClearance
     var body: some View {
         if let book = library.book(id) {
-            ScrollView {
-                VStack(spacing: 18) {
-                    BookCover(book: book).frame(width: 200, height: 295).shadow(color: .black.opacity(0.15), radius: 16, y: 8)
-                    Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
-                    if !book.author.isEmpty { Text(book.author).foregroundStyle(.secondary) }
-                    HStack(spacing: 12) {
-                        if book.ebook != nil { Button { reader = true } label: { formatLabel("E-book", icon: "book", progress: book.finished ? "Finished" : "\(Int(book.readingProgress * 100))%") }.buttonStyle(.plain) }
-                        else if book.download != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.download(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "E-book") }.buttonStyle(.plain).disabled(library.busy) }
-                        if book.audio != nil { Button { audio.playerRoute = PlayerRoute(id: id) } label: { formatLabel("Audiobook", icon: "headphones", progress: mediaTime(book.audioPosition)) }.buttonStyle(.plain) }
-                        else if book.audioDownload != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.downloadAudio(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "Audiobook") }.buttonStyle(.plain).disabled(library.busy) }
-                    }
-                    if book.ebook == nil && book.download == nil { Button("Add e-book") { audioImport = false; importer = true }.frame(minHeight: 44) }
-                    if book.audio == nil && book.audioDownload == nil { Button("Add audiobook") { audioImport = true; importer = true }.frame(minHeight: 44) }
-                    if book.streaming { Button("Keep offline") { Task {
-                        do { guard let url = book.audio.flatMap(URL.init(string:)) else { return }; let entry = try await TelegramLibrary.shared.resolve(url); audio.stopForOffline(); TelegramLibrary.shared.download(entry, library: library) }
-                        catch { library.error = error.localizedDescription }
-                    } }.frame(minHeight: 44) }
-                    if library.busy { ProgressView("Downloading…") }
-                    Button("Edit artwork", systemImage: "photo") { coverImport = true }.font(.subheadline).padding(.top, 8)
-                }.padding(24)
-            }.navigationBarTitleDisplayMode(.inline)
+            // The page fits between the navigation and tab bars, with the artwork taking the height that is left.
+            // It only scrolls when the text is too large for even a small cover.
+            ViewThatFits(in: .vertical) {
+                details(book, fitting: true).frame(maxHeight: .infinity, alignment: .top)
+                ScrollView { details(book, fitting: false) }
+            }.safeAreaPadding(.bottom, miniPlayerClearance).navigationBarTitleDisplayMode(.inline)
             .fullScreenCover(isPresented: $reader) {
                 if ["pdf", "cbz"].contains(book.ebook?.components(separatedBy: ".").last?.lowercased() ?? "") { FixedReaderScreen(id: id) } else { ReaderScreen(id: id) }
             }
@@ -353,6 +367,38 @@ struct BookDetail: View {
             } }
             .fileImporter(isPresented: $coverImport, allowedContentTypes: [.jpeg, .png]) { result in do { try library.replaceCover(result.get(), id: id) } catch { library.error = error.localizedDescription } }
         }
+    }
+    func details(_ book: MediaBook, fitting: Bool) -> some View {
+        VStack(spacing: 18) {
+            artwork(book, fitting: fitting)
+            Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
+            if !book.author.isEmpty { Text(book.author).foregroundStyle(.secondary) }
+            HStack(spacing: 12) {
+                if book.ebook != nil { Button { reader = true } label: { formatLabel("E-book", icon: "book", progress: book.finished ? "Finished" : "\(Int(book.readingProgress * 100))%") }.buttonStyle(.plain) }
+                else if book.download != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.download(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "E-book") }.buttonStyle(.plain).disabled(library.busy) }
+                if book.audio != nil { Button { audio.playerRoute = PlayerRoute(id: id) } label: { formatLabel("Audiobook", icon: "headphones", progress: mediaTime(book.audioPosition)) }.buttonStyle(.plain) }
+                else if book.audioDownload != nil { Button { Task { library.busy = true; defer { library.busy = false }; do { try await server.downloadAudio(book, library: library) } catch { library.error = error.localizedDescription } } } label: { formatLabel("Download", icon: "arrow.down", progress: "Audiobook") }.buttonStyle(.plain).disabled(library.busy) }
+            }
+            if book.ebook == nil && book.download == nil { Button("Add e-book") { audioImport = false; importer = true }.frame(minHeight: 44) }
+            if book.audio == nil && book.audioDownload == nil { Button("Add audiobook") { audioImport = true; importer = true }.frame(minHeight: 44) }
+            if book.streaming { Button("Keep offline") { Task {
+                do { guard let url = book.audio.flatMap(URL.init(string:)) else { return }; let entry = try await TelegramLibrary.shared.resolve(url); audio.stopForOffline(); TelegramLibrary.shared.download(entry, library: library) }
+                catch { library.error = error.localizedDescription }
+            } }.frame(minHeight: 44) }
+            if library.busy { ProgressView("Downloading…") }
+            Button("Edit artwork", systemImage: "photo") { coverImport = true }.font(.subheadline).padding(.top, 8)
+        }.padding(24)
+    }
+    /// The cover at its own proportions, at most 240 points wide and 320 tall. On a page that fits the screen it
+    /// grows into the height the rest leaves, from 140 points; in the scrolling fallback it is full size.
+    func artwork(_ book: MediaBook, fitting: Bool) -> some View {
+        let size = book.cover.flatMap { UIImage(contentsOfFile: library.file($0).path)?.size }
+        let aspect = size.map { $0.width / max($0.height, 1) } ?? 200 / 295
+        let tallest = min(320, 240 / aspect)
+        return BookCover(book: book).aspectRatio(aspect, contentMode: .fit)
+            .frame(maxWidth: 240, idealHeight: fitting ? min(140, tallest) : tallest, maxHeight: tallest)
+            .layoutPriority(-1) // The title and buttons keep their full height; the cover takes what is left.
+            .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
     }
     func formatLabel(_ name: String, icon: String, progress: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -371,7 +417,7 @@ struct AppearanceScreen: View {
         NavigationStack {
             Form {
                 Picker("Appearance", selection: $appearance) { ForEach(["System", "Light", "Dark"], id: \.self) { Text($0) } }.pickerStyle(.segmented)
-                Section("Accent colour") { ForEach(["Aquamarine", "Blue", "Lilac", "Peach"], id: \.self) { name in
+                Section("Accent colour") { ForEach(portalAccentNames, id: \.self) { name in
                     Button { accent = name } label: { HStack { Circle().fill(portalAccent(name)).frame(width: 24, height: 24); Text(name).foregroundStyle(.primary); Spacer(); if name == accent { Image(systemName: "checkmark") } } }.frame(minHeight: 44)
                 } }
             }.navigationTitle("Appearance").toolbar { Button("Done") { dismiss() } }
@@ -420,6 +466,12 @@ struct ServerScreen: View {
         .onAppear { if let account = server.account { address = account.url.absoluteString; user = account.user; password = account.password } }
         .animation(.easeInOut(duration: 0.25), value: expanded)
     }
+}
+
+extension EnvironmentValues {
+    /// The mini player's height while it shows. The tab's inset only moves the stack's root page up, so a
+    /// pushed page reserves this itself instead of laying out behind the mini player.
+    @Entry var miniPlayerClearance: CGFloat = 0
 }
 
 private extension View {

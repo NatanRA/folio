@@ -70,8 +70,7 @@ final class PortalUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Next page"].exists)
         app.buttons["Next page"].tap()
         pages.tap()
-        let twelve = app.buttons["Page 12"]
-        XCTAssertTrue(twelve.waitForExistence(timeout: 10)); twelve.tap()
+        goToPage("12", in: app)
         XCTAssertTrue(pages.waitForExistence(timeout: 5))
         let match = NSPredicate(format: "label BEGINSWITH '12 /'")
         expectation(for: match, evaluatedWith: pages); waitForExpectations(timeout: 10)
@@ -109,18 +108,25 @@ final class PortalUITests: XCTestCase {
         }
         guard audiobook.exists else { throw XCTSkip("Requires a seeded audiobook in the simulator library") }
         audiobook.tap()
-        let play = app.buttons["Play"]; XCTAssertTrue(play.waitForExistence(timeout: 10)); play.tap()
-        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
+        let play = app.buttons["Play"]; XCTAssertTrue(play.waitForExistence(timeout: 10))
         // Chapters open in a sheet of their own rather than scrolling under the controls.
         let chapters = app.buttons["Chapters"]
         if chapters.waitForExistence(timeout: 2), chapters.isEnabled {
             chapters.tap()
-            // Jumping to the first chapter also leaves the rest of the test plenty of book to play.
+            // Starting from the first chapter leaves the test plenty of book, wherever an earlier run stopped.
             let first = app.buttons.matching(NSPredicate(format: "label ENDSWITH 'starts at 0:00'")).firstMatch
             XCTAssertTrue(first.waitForExistence(timeout: 5)); first.tap()
         }
+        play.tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5))
         // Closing the player while it plays is what brings the mini player up.
         app.buttons["Close player"].tap()
+        // The book page fits between the navigation bar and the mini player, so nothing needs scrolling to.
+        let editArtwork = app.buttons["Edit artwork"]; XCTAssertTrue(editArtwork.waitForExistence(timeout: 5))
+        let openPlayer = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open player'")).firstMatch
+        XCTAssertTrue(openPlayer.waitForExistence(timeout: 5))
+        XCTAssertTrue(editArtwork.isHittable)
+        XCTAssertLessThanOrEqual(editArtwork.frame.maxY, openPlayer.frame.minY, "The book page must end above the mini player")
         app.tabBars.buttons["Home"].tap()
         let mini = app.buttons["Pause audiobook"]; XCTAssertTrue(mini.waitForExistence(timeout: 5))
         XCTAssertLessThanOrEqual(mini.frame.maxY, app.tabBars.firstMatch.frame.minY + 1, "The mini player must sit above the tab bar, not over it")
@@ -182,15 +188,10 @@ final class PortalUITests: XCTestCase {
         let picker = app.buttons["pagePicker"]; XCTAssertTrue(picker.waitForExistence(timeout: 15))
         let total = try XCTUnwrap(picker.label.components(separatedBy: "/").last?.trimmingCharacters(in: .whitespaces))
         picker.tap()
-        let last = app.buttons["Page \(total)"]
-        // The grid is lazy, so scroll it (not the reader beneath) until the last tile is realised.
-        let grid = app.scrollViews.containing(NSPredicate(format: "label == 'Page 1'")).firstMatch
-        var swipes = 0
-        while !last.exists && swipes < 20 { grid.swipeUp(velocity: .fast); swipes += 1 }
-        if last.exists { last.tap() } else { app.buttons["Done"].tap() }
+        goToPage(total, in: app)
         let finish = app.buttons["Mark as finished"]
         let next = app.buttons["Next page"]; XCTAssertTrue(next.waitForExistence(timeout: 5))
-        // Fallback for when the grid could not be scrolled: page forward until the end of the book.
+        // Fallback in case the jump fell short of the end: page forward until the end of the book.
         var taps = 0
         while !finish.exists && taps < 120 { next.tap(); taps += 1 }
         XCTAssertTrue(finish.waitForExistence(timeout: 10))
@@ -216,6 +217,99 @@ final class PortalUITests: XCTestCase {
         XCTAssertGreaterThan(light, 0.65, "Sheet background should turn light with the Light setting (was \(light))")
         picker.buttons["System"].tap()
         app.buttons["Done"].tap()
+    }
+    /// Screenshots every screen that carries the accent, in each appearance, accent and reading paper, for a
+    /// person to review legibility. It only runs when asked: `TEST_RUNNER_FOLIO_THEME_AUDIT=1 xcodebuild test …`.
+    func testThemeAudit() throws {
+        guard ProcessInfo.processInfo.environment["FOLIO_THEME_AUDIT"] != nil else { throw XCTSkip("Set TEST_RUNNER_FOLIO_THEME_AUDIT=1 to capture the theme audit") }
+        let papers = ["White", "Sepia", "Sakura", "Night", "Indigo"]
+        for appearance in ["Light", "Dark"] {
+            for accent in ["Aquamarine", "Blue", "Lilac", "Peach", "Sakura"] {
+                let app = XCUIApplication()
+                app.launchArguments = ["-appearance", appearance, "-accent", accent, "-reader.paper", "White"]
+                app.launch()
+                func shot(_ name: String) { let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "\(appearance)-\(accent)-\(name)"; attachment.lifetime = .keepAlways; add(attachment) }
+                shot("1-home")
+                app.tabBars.buttons["Library"].tap()
+                let book = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'The Lighthouse Keeper'")).firstMatch
+                XCTAssertTrue(book.waitForExistence(timeout: 5)); book.tap()
+                let ebook = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'E-book'")).firstMatch
+                XCTAssertTrue(ebook.waitForExistence(timeout: 5)); shot("2-book")
+                app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Audiobook'")).firstMatch.tap()
+                XCTAssertTrue(app.buttons["Close player"].waitForExistence(timeout: 10)); sleep(1); shot("3-player")
+                app.buttons["Close player"].tap()
+                XCTAssertTrue(ebook.waitForExistence(timeout: 5)); ebook.tap()
+                let pages = app.buttons["pagePicker"]; XCTAssertTrue(pages.waitForExistence(timeout: 10))
+                for paper in papers {
+                    if paper != "White" {
+                        app.buttons["Reader menu"].tap(); app.buttons["Reading options"].tap()
+                        let swatch = app.buttons[paper]; XCTAssertTrue(swatch.waitForExistence(timeout: 5)); swatch.tap()
+                        if paper == "Sakura" { shot("5-options") }
+                        app.buttons["Done"].tap(); sleep(1)
+                    }
+                    shot("4-reader-\(papers.firstIndex(of: paper)!)-\(paper)")
+                }
+                pages.tap(); XCTAssertTrue(app.descendants(matching: .any)["pageBook"].waitForExistence(timeout: 5)); sleep(1); shot("6-pages-Indigo")
+                app.buttons["Done"].tap()
+                app.terminate()
+            }
+        }
+    }
+    /// Swiping the page picker's book turns one page, and "Open page" takes the reader there.
+    func testPageBookTurnsAPageAndOpensIt() throws {
+        let app = XCUIApplication(); app.launch()
+        app.tabBars.buttons["Library"].tap()
+        let alice = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Alice'")).firstMatch
+        guard alice.waitForExistence(timeout: 5) else { throw XCTSkip("Requires the simulator-only Alice fixture") }
+        alice.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'E-book'")).firstMatch.tap()
+        let picker = app.buttons["pagePicker"]; XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        picker.tap(); goToPage("5", in: app)
+        expectation(for: NSPredicate(format: "label BEGINSWITH '5 /'"), evaluatedWith: picker); waitForExpectations(timeout: 10)
+        picker.tap()
+        let book = app.descendants(matching: .any)["pageBook"]; XCTAssertTrue(book.waitForExistence(timeout: 5))
+        let header = app.buttons["pageNumberEntry"]
+        XCTAssertTrue(header.label.hasPrefix("Page 5 of"), header.label)
+        // A slow drag with a pause before letting go turns exactly one page, by passing halfway rather than by a flick.
+        book.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: book.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        expectation(for: NSPredicate(format: "label BEGINSWITH 'Page 6 of'"), evaluatedWith: header); waitForExpectations(timeout: 5)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Page book"; shot.lifetime = .keepAlways; add(shot)
+        app.buttons["Open page 6"].tap()
+        expectation(for: NSPredicate(format: "label BEGINSWITH '6 /'"), evaluatedWith: picker); waitForExpectations(timeout: 10)
+    }
+    /// At page 1 the book lies closed on its cover; turning it opens onto page 2, and turning back closes it.
+    func testPageBookOpensFromItsCover() throws {
+        let app = XCUIApplication(); app.launch()
+        app.tabBars.buttons["Library"].tap()
+        let alice = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Alice'")).firstMatch
+        guard alice.waitForExistence(timeout: 5) else { throw XCTSkip("Requires the simulator-only Alice fixture") }
+        alice.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'E-book'")).firstMatch.tap()
+        let picker = app.buttons["pagePicker"]; XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        picker.tap(); goToPage("1", in: app)
+        expectation(for: NSPredicate(format: "label BEGINSWITH '1 /'"), evaluatedWith: picker); waitForExpectations(timeout: 10)
+        picker.tap()
+        let book = app.descendants(matching: .any)["pageBook"]; XCTAssertTrue(book.waitForExistence(timeout: 5))
+        XCTAssertTrue((book.value as? String)?.hasPrefix("Cover") == true, "\(String(describing: book.value))")
+        let closed = XCTAttachment(screenshot: app.screenshot()); closed.name = "Closed book"; closed.lifetime = .keepAlways; add(closed)
+        book.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: book.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        expectation(for: NSPredicate(format: "value BEGINSWITH 'Page 2 of'"), evaluatedWith: book); waitForExpectations(timeout: 5)
+        let open = XCTAttachment(screenshot: app.screenshot()); open.name = "Opened onto the inside cover"; open.lifetime = .keepAlways; add(open)
+        book.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: book.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        expectation(for: NSPredicate(format: "value BEGINSWITH 'Cover'"), evaluatedWith: book); waitForExpectations(timeout: 5)
+    }
+    /// Types a page into the page picker's "Go to page" prompt, which opens that page.
+    private func goToPage(_ page: String, in app: XCUIApplication) {
+        let header = app.buttons["pageNumberEntry"]; XCTAssertTrue(header.waitForExistence(timeout: 5)); header.tap()
+        let field = app.textFields["Page number"]; XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText(page)
+        app.alerts.buttons["Go"].tap()
+        // Wait for the sheet to finish closing, so the reader's controls have settled where they'll stay.
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.descendants(matching: .any)["pageBook"])
+        waitForExpectations(timeout: 5)
     }
     private func luminance(of image: UIImage, at point: CGPoint) -> CGFloat {
         guard let cg = image.cgImage else { return -1 }

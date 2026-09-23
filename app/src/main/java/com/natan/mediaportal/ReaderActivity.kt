@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
@@ -99,9 +100,7 @@ class ReaderActivity : FragmentActivity() {
         var pinned = prefs.getBoolean("reader:buttons", false)
         val progress = ReadingProgress(prefs, id)
         fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-        val paper = appearance.theme.backgroundColor
-        val ink = appearance.theme.contentColor
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(paper) }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(appearance.paper.page.toArgb()) }
         val overlay = android.widget.FrameLayout(this)
         overlay.addView(root, android.widget.FrameLayout.LayoutParams(-1, -1))
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
@@ -117,7 +116,7 @@ class ReaderActivity : FragmentActivity() {
         val header = ComposeView(this).apply { setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed) }
         val pageCounter = TextView(this).apply {
             tag = "reader-page-counter"
-            text = "…"; textSize = 11f; setTextColor(ink)
+            text = "…"; textSize = 11f; setTextColor(appearance.paper.ink.toArgb())
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             fontFeatureSettings = "tnum"
             setPadding(dp(16), 0, 0, 0)
@@ -129,8 +128,6 @@ class ReaderActivity : FragmentActivity() {
         headerRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         val syncButton = Button(this).apply {
             tag = "reader-sync"; text = "Sync"; isAllCaps = false; isEnabled = false
-            setTextColor(0xFF58DCCB.toInt())
-            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF171C25.toInt())
         }
         // ReaderSync owns this action's enabled/busy state; expose it through the menu.
         syncButton.visibility = View.GONE
@@ -141,7 +138,6 @@ class ReaderActivity : FragmentActivity() {
         val controls = LinearLayout(this).apply { tag = "reader-controls"; isBaselineAligned = false }
         fun pageButton(forward: Boolean, home: Boolean = false) = object : Button(this) {
             private val arrowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xFF58DCCB.toInt()
                 style = android.graphics.Paint.Style.STROKE
                 strokeWidth = 2.8f
                 strokeCap = android.graphics.Paint.Cap.ROUND
@@ -183,8 +179,6 @@ class ReaderActivity : FragmentActivity() {
             visibility = View.GONE
             isAllCaps = false
             text = if (progress.finished) "Finished · 100% · Undo" else "Mark as finished"
-            setTextColor(0xFF58DCCB.toInt())
-            backgroundTintList = android.content.res.ColorStateList.valueOf(0xFF171C25.toInt())
             setOnClickListener {
                 progress.setFinished(!progress.finished)
                 text = if (progress.finished) "Finished · 100% · Undo" else "Mark as finished"
@@ -209,13 +203,7 @@ class ReaderActivity : FragmentActivity() {
             it.isAllCaps = false
             it.textSize = 11f
             it.setPadding(0, 0, 0, 0)
-            it.setTextColor(if (index == 0) 0xFF062D29.toInt() else 0xFFBDECE6.toInt())
             it.backgroundTintList = null
-            it.background = android.graphics.drawable.RippleDrawable(
-                android.content.res.ColorStateList.valueOf(0x3358DCCB),
-                controlShape(index, if (index == 0) 0xFF58DCCB.toInt() else 0xFF19332F.toInt()),
-                controlShape(index, android.graphics.Color.WHITE)
-            )
             controls.addView(it, LinearLayout.LayoutParams(dp(64), dp(48)).apply {
                 if (index != 2) marginEnd = dp(4)
             })
@@ -223,14 +211,15 @@ class ReaderActivity : FragmentActivity() {
         val navigationSpace = View(this).apply { visibility = if (pinned) View.VISIBLE else View.GONE }
         root.addView(navigationSpace, LinearLayout.LayoutParams(-1, dp(56)))
         val footer = TextView(this).apply {
-            tag = "reader-footer"; textSize = 10f; setTextColor(ink)
+            tag = "reader-footer"; textSize = 10f; setTextColor(appearance.paper.ink.toArgb())
             gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
             setPadding(dp(20), 0, dp(20), 0)
         }
         root.addView(footer, LinearLayout.LayoutParams(-1, dp(24)))
         controls.visibility = if (pinned) View.VISIBLE else View.GONE
         overlay.addView(controls, android.widget.FrameLayout.LayoutParams(-2, dp(56), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL))
-        var controlShellColor = 0xFF08231F.toInt()
+        // The reader theme's surface, applied with the button colours once the header composes.
+        var controlShellColor = android.graphics.Color.TRANSPARENT
         var bottomInset = 0
         fun updateControlShell() {
             controls.background = android.graphics.drawable.InsetDrawable(
@@ -255,8 +244,16 @@ class ReaderActivity : FragmentActivity() {
         fun toggleControls() {
             controls.visibility = if (controls.visibility == View.VISIBLE && !pinned) View.GONE else View.VISIBLE
         }
+        fun applyPaper(paper: ReaderPaper) {
+            root.setBackgroundColor(paper.page.toArgb())
+            pageCounter.setTextColor(paper.ink.toArgb()); footer.setTextColor(paper.ink.toArgb())
+            androidx.core.view.WindowCompat.getInsetsController(window, root).apply {
+                isAppearanceLightStatusBars = !paper.dark; isAppearanceLightNavigationBars = !paper.dark
+            }
+        }
         header.setContent {
-            PortalTheme(styleWindow = false) {
+            // The chrome follows the paper, so a light page never carries the app's dark controls.
+            ReaderTheme(appearance.paper) {
                 syncDialog?.let { ReaderSyncDialog(it) { syncDialog = null } }
                 dictionaryWord?.let { DictionarySheet(it) { dictionaryWord = null } }
                 moreSelection?.let { entry -> SelectionActionsSheet(entry.quote, { moreSelection = null }) { action ->
@@ -295,6 +292,10 @@ class ReaderActivity : FragmentActivity() {
                 androidx.compose.runtime.SideEffect {
                     controlShellColor = colors.surfaceContainer.toArgb()
                     updateControlShell()
+                    completion.setTextColor(colors.onPrimary.toArgb())
+                    completion.backgroundTintList = android.content.res.ColorStateList.valueOf(colors.primary.toArgb())
+                    syncButton.setTextColor(colors.primary.toArgb())
+                    syncButton.backgroundTintList = android.content.res.ColorStateList.valueOf(colors.surfaceContainer.toArgb())
                     listOf(back, previous, next).forEachIndexed { index, button ->
                         button.setTextColor(colors.onSecondaryContainer.toArgb())
                         button.background = android.graphics.drawable.RippleDrawable(
@@ -308,12 +309,7 @@ class ReaderActivity : FragmentActivity() {
                 ReaderMenu({ syncButton.isEnabled }, { syncButton.performClick() }, pinned,
                     appearance, { updated ->
                         appearance = updated; updated.save(prefs)
-                        root.setBackgroundColor(updated.theme.backgroundColor)
-                        pageCounter.setTextColor(updated.theme.contentColor); footer.setTextColor(updated.theme.contentColor)
-                        androidx.core.view.WindowCompat.getInsetsController(window, root).apply {
-                            isAppearanceLightNavigationBars = updated.theme != org.readium.r2.navigator.preferences.Theme.DARK
-                            isAppearanceLightStatusBars = isAppearanceLightNavigationBars
-                        }
+                        applyPaper(updated.paper)
                         activeNavigator?.submitPreferences(updated.preferences())
                     }, { showNotes = true }, { exploreTab = it }, { showWords = true }) { checked ->
                     pinned = checked; prefs.edit().putBoolean("reader:buttons", checked).apply()
@@ -323,9 +319,8 @@ class ReaderActivity : FragmentActivity() {
             }
         }
         setContentView(overlay)
+        applyPaper(appearance.paper)
         androidx.core.view.WindowCompat.getInsetsController(window, root).apply {
-            isAppearanceLightStatusBars = appearance.theme != org.readium.r2.navigator.preferences.Theme.DARK
-            isAppearanceLightNavigationBars = isAppearanceLightStatusBars
             hide(WindowInsetsCompat.Type.statusBars())
             systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
@@ -409,13 +404,20 @@ class ReaderActivity : FragmentActivity() {
                 })
                 var showPages by mutableStateOf(false)
                 var currentPage by mutableStateOf(1)
+                val previews = PagePreviews(opened, positions)
                 overlay.addView(ComposeView(this@ReaderActivity).apply {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
-                        if (showPages && totalPages > 0) PagePicker(title.name, totalPages, currentPage,
-                            onDismiss = { showPages = false }, onSelect = { page ->
-                                if (navigator.go(positions[page - 1])) showPages = false
-                            })
+                        // Loaded with the reader, so the picker's front cover is ready when it opens.
+                        val artwork = rememberArtwork(title, androidx.compose.runtime.remember { BookServer(this@ReaderActivity) })
+                        val cover = androidx.compose.runtime.remember(artwork) { artwork?.asImageBitmap() }
+                        if (showPages && totalPages > 0) ReaderTheme(appearance.paper) {
+                            androidx.compose.runtime.DisposableEffect(Unit) { onDispose { previews.release() } }
+                            PagePicker(title.name, title.author, cover, appearance.paper, totalPages, currentPage, previews.chapters, previews::excerpt,
+                                onDismiss = { showPages = false }, onSelect = { page ->
+                                    if (navigator.go(positions[page - 1])) showPages = false
+                                })
+                        }
                     }
                 }, android.widget.FrameLayout.LayoutParams(-1, -1))
                 pageCounter.isFocusable = totalPages > 0
