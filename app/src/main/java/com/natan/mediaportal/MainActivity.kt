@@ -10,12 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -45,9 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -200,7 +191,7 @@ class MainActivity : ComponentActivity() {
         FolioNavigation.from(intent.data?.toString())?.let { pendingNavigation = it; return }
         PairingLink.from(intent.data?.toString())?.let { pendingPairing = it }
     }
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingPairing = PairingLink.from(intent?.data?.toString())
@@ -235,6 +226,10 @@ class MainActivity : ComponentActivity() {
                 var listening by remember(homeReturn) { mutableStateOf<Title?>(if (homeReturn == 0 && intent.getBooleanExtra("openAudio", false)) local.find { it.id == getSharedPreferences("progress", MODE_PRIVATE).getString("activeAudio", null) } else null) }
                 // The page under the player stays composed, so closing the player refreshes the progress it shows.
                 LaunchedEffect(listening) { if (listening != null) connectAudio() else progressVersion++ }
+                // One spring carries the player between the mini player and full screen; whatever sets or clears
+                // `listening` (a tap, Back, the close arrow, a search result) turns it around from wherever it is.
+                val morph = rememberPlayerMorph()
+                LaunchedEffect(listening) { morph.retarget(open = listening != null) }
                 val nowPlaying = rememberNowPlaying(audioController)
                 val mini = nowPlaying?.let { playing -> local.find { it.id == playing.titleId }?.let { playing to it } }
                 // Pages pad their bottom by this much more while the mini player floats over them.
@@ -257,9 +252,6 @@ class MainActivity : ComponentActivity() {
                 BackHandler(searching || selected != null || listening != null || tab != 0) { if (searching) closeSearch() else if (listening != null) listening = null else if (selected != null) selected = null else tab = 0 }
                 val hazeState = remember { HazeState() }
                 val tabItems = remember { listOf(TabItem("Home", Icons.Outlined.Home), TabItem("Library", Icons.Outlined.AutoStories), TabItem("Downloads", Icons.Outlined.Download), TabItem("Server", Icons.Outlined.Dns)) }
-                // The mini player and the full player share their capsule and cover, so each grows out of the other.
-                SharedTransitionLayout(Modifier.fillMaxSize()) {
-                val shared = this
                 Box(Modifier.fillMaxSize()) {
                 Scaffold(containerColor = Background) { padding ->
                     Column(Modifier.fillMaxSize().padding(padding)) {
@@ -363,15 +355,16 @@ class MainActivity : ComponentActivity() {
                             // The floating tab bar sits over the page, so lists pad their bottom to scroll clear of it.
                             if (selected == null) GlassTabBar(tabItems, tab, { tab = it; closeSearch() }, hazeState, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).blur(blur))
                             // The mini player floats 8dp above the 64dp tab bar, or at the bottom where there is no tab bar.
+                            // It stays composed under the full player, fading as the card grows out of it.
                             mini?.let { (playing, title) ->
-                                androidx.compose.animation.AnimatedVisibility(visible = listening == null, enter = fadeIn(tween(200, 120)), exit = fadeOut(tween(120)),
-                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (selected == null) 84.dp else 12.dp).blur(blur)) {
-                                    MiniPlayer(title, playing.detail, playing.playing, rememberArtwork(title, server, artworkRevision), hazeState,
-                                        onOpen = { listening = title },
-                                        onToggle = { audioController?.let { player -> if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } } },
-                                        capsuleModifier = with(shared) { Modifier.sharedBounds(rememberSharedContentState("player-${title.id}"), this@AnimatedVisibility, clipInOverlayDuringTransition = OverlayClip(CircleShape)) },
-                                        thumbnailModifier = with(shared) { Modifier.sharedElement(rememberSharedContentState("player-cover-${title.id}"), this@AnimatedVisibility) })
-                                }
+                                val artwork = rememberArtwork(title, server, artworkRevision)
+                                DisposableEffect(Unit) { morph.miniPlaced = true; onDispose { morph.miniPlaced = false } }
+                                MiniPlayer(title, playing.detail, playing.playing, artwork, hazeState,
+                                    onOpen = { listening = title },
+                                    onToggle = { audioController?.let { player -> if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } } },
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (selected == null) 84.dp else 12.dp).blur(blur).miniPlayerMorph(morph),
+                                    capsuleModifier = Modifier.miniCapsuleBounds(morph),
+                                    thumbnailModifier = Modifier.miniCoverMorph(morph, flying = artwork != null))
                             }
                             // Search floats over the content on a translucent, blurred layer so nothing behind it moves.
                             androidx.compose.animation.AnimatedVisibility(visible = searching, enter = fadeIn(tween(220)) + scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = .98f), exit = fadeOut(tween(170)) + scaleOut(tween(170), targetScale = .98f)) {
@@ -396,30 +389,21 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                // The player covers the whole app and grows out of the mini player's capsule and cover; Back, the
-                // chevron or a swipe down shrinks it back in.
+                // The player covers the whole app and grows out of the mini player's capsule and cover, or up from the
+                // bottom edge when nothing was playing. Back, the chevron or a swipe down shrinks it back; a tap on
+                // the shrinking card brings it back. At rest shut, it leaves the composition and every touch below.
                 var shownTitle by remember { mutableStateOf<Title?>(null) }
                 LaunchedEffect(listening) { if (listening != null) shownTitle = listening }
-                androidx.compose.animation.AnimatedVisibility(visible = listening != null,
-                    enter = if (mini != null) fadeIn(tween(220)) else slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(220)),
-                    exit = if (mini != null) fadeOut(tween(220, 60)) else slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it / 3 } + fadeOut(tween(220))) {
-                    val title = listening ?: shownTitle ?: return@AnimatedVisibility
-                    var drag by remember { mutableFloatStateOf(0f) }
-                    val dismissDistance = with(LocalDensity.current) { 140.dp.toPx() }
-                    Column(Modifier.fillMaxSize()
-                        .offset { IntOffset(0, drag.roundToInt()) }
-                        .then(with(shared) { Modifier.sharedBounds(rememberSharedContentState("player-${title.id}"), this@AnimatedVisibility, clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(28.dp))) })
-                        .clip(RoundedCornerShape((drag / 12f).coerceIn(0f, 28f).dp))
-                        .background(Background)
-                        .draggable(rememberDraggableState { delta -> drag = (drag + delta).coerceAtLeast(0f) }, Orientation.Vertical,
-                            onDragStopped = { velocity -> if (drag > dismissDistance || velocity > 2400f) listening = null else animate(drag, 0f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { value, _ -> drag = value } })
-                        .safeDrawingPadding()
-                        .testTag("audio-player")) {
-                        Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp).size(width = 36.dp, height = 5.dp).clip(CircleShape).background(Muted.copy(alpha = .4f)))
-                        AudioPlayer(title, rememberArtwork(title, server, artworkRevision),
-                            coverModifier = with(shared) { Modifier.sharedElement(rememberSharedContentState("player-cover-${title.id}"), this@AnimatedVisibility) }) { listening = null }
+                if (listening != null || morph.active) (listening ?: shownTitle)?.let { title ->
+                    val artwork = rememberArtwork(title, server, artworkRevision)
+                    val cover = remember(artwork) { artwork?.asImageBitmap() }
+                    PlayerCard(morph, Background, Panel, cover, closing = listening == null,
+                        onReopen = { listening = title }, onRelease = { open -> listening = if (open) title else null }) { coverModifier ->
+                        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                            Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp).size(width = 36.dp, height = 5.dp).clip(CircleShape).background(Muted.copy(alpha = .4f)))
+                            AudioPlayer(title, artwork, coverModifier) { listening = null }
+                        }
                     }
-                }
                 }
                 }
                 if (addMenu) AlertDialog(onDismissRequest = { addMenu = false }, title = { Text("Add to your library") }, text = {

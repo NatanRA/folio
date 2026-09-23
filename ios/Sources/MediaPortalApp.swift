@@ -123,7 +123,6 @@ struct PortalHome: View {
     @EnvironmentObject var server: BookServer
     @EnvironmentObject var audio: AudioPlayer
     @State private var tab = 0
-    @Namespace private var playerZoom
     @State private var search = ""
     @State private var searching = false
     @State private var freeBooks = false
@@ -134,6 +133,16 @@ struct PortalHome: View {
     @State private var appearance = false
     @State private var resultsHeight: CGFloat = 0
     @State private var miniPlayerHeight: CGFloat = 0
+    /// The book in the player card, kept while the card shrinks away after the player is closed.
+    @State private var shownPlayer: String?
+    /// How far open the card is, from 0 (the mini player) to 1 (full screen). Only ever changed by one spring.
+    @State private var playerExpansion = 0.0
+    @State private var growsFromMini = true
+    @State private var playerProbe = PlayerMorphProbe()
+    @State private var closingPlayer = 0
+    /// The visible mini player's capsule and thumbnail on screen, which the card grows out of and shrinks into.
+    @State private var miniFrame: CGRect?
+    @State private var miniCoverFrame: CGRect?
     /// A book opened from search is pushed on the visible tab's own stack, so the tab bar stays.
     @State private var pushedBook: (tab: Int, id: String)?
     var body: some View {
@@ -191,8 +200,16 @@ struct PortalHome: View {
             }.background(Color(uiColor: .systemBackground).opacity(0.55))
             .transition(.opacity.combined(with: .scale(scale: 0.98)))
         }
+        if let shownPlayer {
+            PlayerCard(bookID: shownPlayer, expansion: playerExpansion, isOpen: audio.playerRoute != nil,
+                       start: growsFromMini ? miniFrame : nil, startCover: growsFromMini ? miniCoverFrame : nil, probe: playerProbe,
+                       open: { audio.playerRoute = PlayerRoute(id: shownPlayer, fromMiniPlayer: true) },
+                       close: { audio.playerRoute = nil },
+                       drag: followPlayerDrag, release: releasePlayerDrag)
         }
         }
+        }
+        .onChange(of: audio.playerRoute) { _, route in movePlayer(to: route) }
         .onChange(of: searchFocused) { _, value in if value { searching = true } }
         .onChange(of: freeBooks) { _, _ in searchFocused = false }
         .alert("Something needs attention", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) { Button("OK") { library.error = nil } } message: { Text(library.error ?? "") }
@@ -207,8 +224,54 @@ struct PortalHome: View {
             }
         }
         .sheet(isPresented: $appearance) { AppearanceScreen() }
-        .sheet(item: $audio.playerRoute) { route in PlayerScreen(id: route.id).zoomTransition(from: "mini-player", in: playerZoom, active: route.fromMiniPlayer) }
         .sheet(item: $server.pendingPairing) { PairingConfirmation(pairing: $0) }
+    }
+    /// Opens or closes the player card. Opening and closing both animate the same value with the same spring, so a tap
+    /// that lands mid-flight turns the card around from where it is, at the speed it already has.
+    private func movePlayer(to route: PlayerRoute?) {
+        if let route {
+            closingPlayer += 1
+            if shownPlayer != route.id {
+                growsFromMini = route.fromMiniPlayer && miniFrame != nil && audio.bookID != nil
+                shownPlayer = route.id
+                playerExpansion = 0
+                // On the next frame, so the new card is drawn where it starts before it springs open.
+                DispatchQueue.main.async { withAnimation(.spring(playerSpring)) { playerExpansion = 1 } }
+            } else if playerExpansion != 1 {
+                withAnimation(.spring(playerSpring)) { playerExpansion = 1 }
+            }
+        } else if shownPlayer != nil, playerExpansion != 0 {
+            // A player that rose from the book page still shrinks into the mini player, once there is one.
+            if playerProbe.expansion > 0.99, miniFrame != nil, audio.bookID != nil { growsFromMini = true }
+            withAnimation(.spring(playerSpring)) { playerExpansion = 0 }
+            removePlayerWhenSettled()
+        }
+    }
+    /// Takes the card away once a close has settled. SwiftUI never reported the spring finishing on this card, so the
+    /// card waits out the spring's own settling time instead. A reopen, or a later close, makes an earlier wait stale.
+    private func removePlayerWhenSettled(extra: Double = 0) {
+        closingPlayer += 1
+        let close = closingPlayer
+        DispatchQueue.main.asyncAfter(deadline: .now() + playerSpring.settlingDuration + extra) {
+            if close == closingPlayer, audio.playerRoute == nil { shownPlayer = nil }
+        }
+    }
+    /// A drag holds the card under the finger, with no animation, so it can also catch a card that is still moving.
+    private func followPlayerDrag(_ expansion: Double) {
+        if !growsFromMini, playerProbe.expansion > 0.99, miniFrame != nil, audio.bookID != nil { growsFromMini = true }
+        var still = Transaction(); still.disablesAnimations = true
+        withTransaction(still) { playerExpansion = expansion }
+    }
+    /// Let go, the card closes if flung down or pulled a third of the way, and springs open otherwise, starting at the
+    /// finger's speed.
+    private func releasePlayerDrag(_ expansion: Double, _ velocity: Double, flung: Bool) {
+        let closes = flung || expansion < 0.66
+        let target = closes ? 0.0 : 1.0
+        let relative = abs(target - expansion) < 0.001 ? 0 : velocity / (target - expansion)
+        withAnimation(.interpolatingSpring(playerSpring, initialVelocity: relative)) { playerExpansion = target }
+        // A fling adds a little to how long the spring takes to settle.
+        if closes { audio.playerRoute = nil; removePlayerWhenSettled(extra: 0.15) }
+        else if audio.playerRoute == nil, let shownPlayer { audio.playerRoute = PlayerRoute(id: shownPlayer, fromMiniPlayer: true) }
     }
     /// Expands the search field out of the toolbar magnifier. The field scales in from its trailing edge,
     /// where the magnifier sits, so it reads as the icon growing into the field.
@@ -310,8 +373,8 @@ struct PortalHome: View {
     /// Inset around the whole `TabView` instead, it was drawn over the tab bar and left no way to
     /// change tabs while an audiobook was loaded.
     /// It floats as its own capsule, matching the tab bar, rather than a full-width strip behind it.
-    /// Every tab carries its own copy, so only the visible tab's is the zoom source. It stays in place
-    /// under the open player, so the player has something to shrink back into.
+    /// Every tab carries its own copy; the visible tab's reports where it is, so the player card grows out of it and
+    /// shrinks back into it.
     @ViewBuilder private func miniPlayer(tab owner: Int) -> some View {
         if let id = audio.bookID, let book = library.book(id) {
             HStack(spacing: 4) {
@@ -321,6 +384,7 @@ struct PortalHome: View {
                             if let cover = book.cover, let image = UIImage(contentsOfFile: library.file(cover).path) { Image(uiImage: image).resizable().scaledToFill() }
                             else { Image(systemName: "headphones").frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.accentColor.opacity(0.12)) }
                         }.frame(width: 36, height: 36).clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if owner == tab { miniCoverFrame = $0 } }
                         VStack(alignment: .leading, spacing: 1) {
                             Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                             Text(audio.chapters.indices.contains(audio.chapterIndex) ? audio.chapters[audio.chapterIndex].name : book.author).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -333,7 +397,9 @@ struct PortalHome: View {
             }
             .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
             .miniPlayerBackground()
-            .zoomSource(id: "mini-player", in: playerZoom, active: owner == tab)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if owner == tab { miniFrame = $0 } }
+            // While the card is out it draws the mini player itself, so this one steps aside until the card is gone.
+            .opacity(shownPlayer == nil ? 1 : 0)
             .padding(.horizontal, 20).padding(.bottom, 8)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { miniPlayerHeight = $0 }
         }
@@ -478,14 +544,6 @@ private extension View {
     /// Lets the blurred page show through the search layer. The navigation container is opaque before iOS 18.
     @ViewBuilder func clearNavigationBackground() -> some View {
         if #available(iOS 18, *) { containerBackground(Color.clear, for: .navigation) } else { self }
-    }
-    /// Marks the view the player zooms out of, on iOS 18 and later.
-    @ViewBuilder func zoomSource(id: String, in namespace: Namespace.ID, active: Bool) -> some View {
-        if #available(iOS 18, *), active { matchedTransitionSource(id: id, in: namespace) } else { self }
-    }
-    /// Grows the player out of its source and, on a swipe down, shrinks it back in; iOS 17 keeps the plain sheet.
-    @ViewBuilder func zoomTransition(from id: String, in namespace: Namespace.ID, active: Bool) -> some View {
-        if #available(iOS 18, *), active { navigationTransition(.zoom(sourceID: id, in: namespace)) } else { self }
     }
     /// Liquid Glass where the tab bar is glass too; a frosted capsule on earlier versions.
     @ViewBuilder func miniPlayerBackground() -> some View {

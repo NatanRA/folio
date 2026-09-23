@@ -11,6 +11,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import androidx.compose.ui.test.captureToImage
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -98,6 +99,11 @@ class MediaPolishTest {
                 // The player is a full-height sheet whose timeline covers the current chapter only.
                 compose.waitUntil(10000) { compose.onAllNodesWithText("First chapter").fetchSemanticsNodes().isNotEmpty() }
                 compose.waitUntil(10000) { compose.onAllNodesWithText("−0:06").fetchSemanticsNodes().isNotEmpty() }
+                // The title and the close arrow sit straight on the player's background, so they must carry the theme's ink.
+                for (node in listOf(compose.onNodeWithTag("player-title"), compose.onNodeWithContentDescription("Close player"))) {
+                    val contrast = Legibility.contrast(node.captureToImage().asAndroidBitmap())
+                    assertTrue("Player title and close arrow must be readable, got $contrast:1", contrast >= 4.5)
+                }
                 val controlsBefore = compose.onNodeWithTag("audio-controls").fetchSemanticsNode().boundsInRoot
                 compose.onNodeWithContentDescription("Play").assertIsDisplayed().performClick()
                 compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Pause").fetchSemanticsNodes().isNotEmpty() }

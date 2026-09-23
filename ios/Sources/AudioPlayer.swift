@@ -21,6 +21,14 @@ struct AudioChapter: Identifiable {
     @Published var playerRoute: PlayerRoute?
     @Published var speed = UserDefaults.standard.object(forKey: "audio.speed") as? Float ?? 1
     @Published var sleepDeadline: Date?
+    /// Where playback was last known to be, when, and how fast it was going. The player reports its position only twice
+    /// a second; the progress bar draws from this clock every frame, so it glides instead of stepping.
+    @Published private(set) var clock = PlaybackClock()
+    /// The latest jump, which the bar eases into for a moment instead of snapping.
+    @Published private(set) var lastSeek: PlaybackSeek?
+    /// A jump the player hasn't reached yet. Until it reports a position near it, or the hold runs out, its older
+    /// reports are ignored, so the bar never flicks back to where it was.
+    private var pendingSeek: PlaybackSeek?
     @Published var sleepChapterEnd: Double?
     private var sleepBoundary: Any?
     private var sleepTask: Task<Void, Never>?
@@ -71,6 +79,14 @@ struct AudioChapter: Identifiable {
     var chapterIndex: Int { chapters.lastIndex { $0.start <= position + 0.05 } ?? 0 }
     var chapterStart: Double { chapters.indices.contains(chapterIndex) ? chapters[chapterIndex].start : 0 }
     var chapterEnd: Double { chapters.indices.contains(chapterIndex + 1) ? chapters[chapterIndex + 1].start : duration }
+    /// Restarts the bar's clock from the latest known position and speed. While a jump is pending, the clock carries on
+    /// from the jump rather than from a report the player hasn't caught up with.
+    private func resyncClock() {
+        let now = Date(), rate = playing ? Double(speed) : 0
+        clock = pendingSeek == nil
+            ? PlaybackMotion.resync(clock, reported: position, rate: rate, now: now)
+            : PlaybackClock(position: clock.position(at: now), at: now, rate: rate)
+    }
     /// How long chapter `index` runs: up to the next chapter, or to the end of the book for the last one.
     func chapterLength(_ index: Int) -> Double {
         guard chapters.indices.contains(index) else { return 0 }
@@ -82,7 +98,8 @@ struct AudioChapter: Identifiable {
             Task { @MainActor in
                 guard let self else { return }
                 let seconds = self.player.currentTime().seconds
-                self.position = seconds.isFinite ? self.trackStart + seconds : self.trackStart
+                let reported = seconds.isFinite ? self.trackStart + seconds : self.trackStart
+                if PlaybackMotion.accepts(reported, pending: self.pendingSeek, now: Date()) { self.pendingSeek = nil; self.position = reported }
                 self.playing = self.player.rate > 0
                 if let end = self.sleepChapterEnd, self.position >= end { self.stopForSleep() }
                 if let id = self.bookID, let library = self.library {
@@ -181,19 +198,39 @@ struct AudioChapter: Identifiable {
             player.playImmediately(atRate: speed); playing = true; publish()
         } catch { self.error = error.localizedDescription }
     }
-    func pause() { player.pause(); playing = false; publish(); if let library { PositionSync.shared.exchange(library: library) } }
+    func pause() {
+        player.pause()
+        // Stop the bar where the audio stopped, not where the last twice-a-second report left it.
+        let seconds = player.currentTime().seconds
+        if pendingSeek == nil, seconds.isFinite { position = trackStart + seconds }
+        playing = false; publish(); if let library { PositionSync.shared.exchange(library: library) }
+    }
     func stopForOffline() { pause(); telegramResource?.cancel(); telegramResource = nil; player.replaceCurrentItem(with: nil); bookID = nil }
-    func seek(_ seconds: Double) {
+    /// Jumps playback. Repeated jumps build on the pending target, so three quick taps of +30 s move 90 s. `eased: false`
+    /// is for a scrubber drag, where the bar already sits where the finger let go.
+    func seek(_ seconds: Double, eased: Bool = true) {
         guard duration > 0 else { return }
+        let now = Date()
+        let shown = PlaybackMotion.shown(clock: clock, seek: lastSeek, now: now)
         position = min(duration, max(0, seconds))
+        let jump = PlaybackSeek(from: eased ? shown : position, to: position, at: now)
+        pendingSeek = jump; lastSeek = jump
+        clock = PlaybackClock(position: position, at: now, rate: playing ? Double(speed) : 0)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(PlaybackMotion.ease + 0.05))
+            if lastSeek == jump { lastSeek = nil }
+        }
         if !tracks.isEmpty {
             let index = chapters.lastIndex { $0.start <= position } ?? 0
             if index != trackIndex { let resume = playing; installTrack(index); if resume { player.playImmediately(atRate: speed) } }
         }
-        player.seek(to: CMTime(seconds: max(0, position - trackStart), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: CMTime(seconds: max(0, position - trackStart), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            Task { @MainActor in if finished, let self, self.pendingSeek == jump { self.pendingSeek = nil } }
+        }
         if let id = bookID { library?.update(id) { $0.audioPosition = position; $0.audioModifiedAt = Date() } }; publish()
     }
     private func publish() {
+        resyncClock()
         guard let id = bookID, let book = library?.book(id) else { return }
         var info: [String: Any] = [MPMediaItemPropertyTitle: book.title,
             MPMediaItemPropertyArtist: chapters.indices.contains(chapterIndex) ? chapters[chapterIndex].name : book.author,
@@ -212,9 +249,62 @@ func mediaTime(_ seconds: Double) -> String {
 }
 
 /// Names the audiobook the full-screen player shows, so any screen can open it.
+/// A position that moves on its own at `rate` seconds per second from `position`, as known at `at`.
+struct PlaybackClock: Equatable {
+    var position = 0.0
+    var at = Date.distantPast
+    var rate = 0.0
+    func position(at date: Date) -> Double { position + max(0, date.timeIntervalSince(at)) * rate }
+}
+
+/// A jump in playback: where the bar was drawn, where it is going, and when.
+struct PlaybackSeek: Equatable {
+    let from: Double
+    let to: Double
+    let at: Date
+}
+
+/// How the progress bar moves. Android's player uses the same rules and numbers.
+enum PlaybackMotion {
+    /// How long the bar eases into a jump.
+    static let ease = 0.18
+    /// How long a jump holds off older reports at most, and how near a report must be to count as having arrived.
+    static let hold = 1.5
+    static let arrived = 1.0
+
+    /// Whether a position the player reports may replace the one shown. Reports from before a pending jump landed are
+    /// ignored, which is what made the bar flick back and forth when skipping.
+    static func accepts(_ reported: Double, pending: PlaybackSeek?, now: Date) -> Bool {
+        guard let pending else { return true }
+        return abs(reported - pending.to) <= arrived || now.timeIntervalSince(pending.at) >= hold
+    }
+
+    /// How big a difference between the bar and a report is still smoothed out rather than jumped.
+    static let converge = 1.5
+
+    /// The clock after a report while playing. Small differences, like the moment audio takes to restart after a jump,
+    /// are absorbed by drawing on from where the bar is at a speed that meets playback a second later, so the bar never
+    /// steps or runs backwards. A bigger difference, like a jump from the lock screen, moves straight there.
+    static func resync(_ clock: PlaybackClock, reported: Double, rate: Double, now: Date) -> PlaybackClock {
+        let shown = clock.position(at: now)
+        let gap = reported - shown
+        guard rate > 0, abs(gap) < converge else { return PlaybackClock(position: reported, at: now, rate: rate) }
+        return PlaybackClock(position: shown, at: now, rate: max(0, rate + gap))
+    }
+
+    /// Where the bar is drawn at `now`: the running clock, eased in from where it was drawn just after a jump.
+    static func shown(clock: PlaybackClock, seek: PlaybackSeek?, now: Date) -> Double {
+        let live = clock.position(at: now)
+        guard let seek else { return live }
+        let progress = now.timeIntervalSince(seek.at) / ease
+        guard progress < 1 else { return live }
+        return seek.from + (live - seek.from) * (1 - pow(1 - max(0, progress), 3))
+    }
+}
+
 struct PlayerRoute: Identifiable, Hashable {
     let id: String
-    /// Opened from the mini player, so it zooms out of it and shrinks back into it.
+    /// Opened from the mini player, so it grows out of it; otherwise it rises from the bottom of the screen.
     var fromMiniPlayer = false
 }
 
@@ -222,9 +312,13 @@ struct PlayerRoute: Identifiable, Hashable {
 /// It follows the app's appearance like every other screen, with the reader's accent marking what can be touched.
 struct PlayerScreen: View {
     let id: String
+    /// The card draws its own flying cover over the artwork's place while it morphs.
+    var hidesArtwork = false
+    /// Reports where the artwork sits, in the card's coordinates, so the flying cover can land on it.
+    var onArtworkFrame: (CGRect) -> Void = { _ in }
     @EnvironmentObject var library: Library
     @EnvironmentObject var audio: AudioPlayer
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closePlayer) private var closePlayer
     @AppStorage("accent") private var accentName = "Aquamarine"
     @State private var cover: UIImage?
     /// The chapter a drag started in, held so playback crossing into the next chapter cannot move the scale mid-drag.
@@ -235,8 +329,10 @@ struct PlayerScreen: View {
     var body: some View {
         if let book = library.book(id) {
             VStack(spacing: 0) {
+                // The grabber says the card can be dragged down; the chevron closes it too.
+                Capsule().fill(Color(uiColor: .tertiaryLabel)).frame(width: 36, height: 5).padding(.bottom, 4).accessibilityHidden(true)
                 HStack {
-                    Button { dismiss() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).foregroundStyle(.primary).frame(width: 40, height: 40).background(Color(uiColor: .secondarySystemFill), in: Circle()) }.accessibilityLabel("Close player")
+                    Button { closePlayer() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).foregroundStyle(.primary).frame(width: 40, height: 40).background(Color(uiColor: .secondarySystemFill), in: Circle()) }.accessibilityLabel("Close player")
                     Spacer()
                 }
                 artwork(book).padding(.horizontal, 16).padding(.vertical, 20)
@@ -247,7 +343,6 @@ struct PlayerScreen: View {
             }
             .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 8)
             .tint(accent)
-            .presentationDragIndicator(.visible)
             .sheet(isPresented: $chaptersShown) { ChapterTimeline() }
             .task(id: book.cover) { cover = book.cover.flatMap { UIImage(contentsOfFile: library.file($0).path) } }
             .task { await audio.load(book, library: library) }
@@ -258,6 +353,8 @@ struct PlayerScreen: View {
             Image(uiImage: cover).resizable().scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .shadow(color: .black.opacity(0.18), radius: 20, y: 10)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(PlayerCard.space)) } action: { onArtworkFrame($0) }
+                .opacity(hidesArtwork ? 0 : 1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityHidden(true)
         } else { BookCover(book: book).frame(maxWidth: 280, maxHeight: .infinity) }
@@ -279,11 +376,20 @@ struct PlayerScreen: View {
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
-    /// Scrubs within the current chapter, as the lock screen does, so a long book still gives fine control.
+    /// Scrubs within the current chapter, as the lock screen does, so a long book still gives fine control. It redraws
+    /// every frame while playing or easing into a jump, and rests otherwise.
     private var scrubber: some View {
+        TimelineView(.animation(paused: !audio.playing && audio.lastSeek == nil)) { context in
+            scrubber(at: context.date)
+        }
+    }
+    private func scrubber(at now: Date) -> some View {
         let start = scrubChapter?.start ?? audio.chapterStart
         let length = scrubChapter?.length ?? max(1, audio.chapterEnd - audio.chapterStart)
-        let elapsed = scrubChapter == nil ? min(max(0, audio.position - start), length) : scrub
+        // A jump into another chapter changes the bar's scale, so it lands there directly rather than easing across.
+        let ease = audio.lastSeek.flatMap { (start...(start + length)).contains($0.from) ? $0 : nil }
+        let shown = PlaybackMotion.shown(clock: audio.clock, seek: ease, now: now)
+        let elapsed = scrubChapter == nil ? min(max(0, shown - start), length) : scrub
         return VStack(spacing: 6) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -299,7 +405,7 @@ struct PlayerScreen: View {
                         scrub = min(max(0, value.location.x / proxy.size.width), 1) * (scrubChapter?.length ?? length)
                     }
                     .onEnded { _ in
-                        if let chapter = scrubChapter { audio.seek(chapter.start + scrub) }
+                        if let chapter = scrubChapter { audio.seek(chapter.start + scrub, eased: false) }
                         scrubChapter = nil
                     })
             }.frame(height: 28)

@@ -2,6 +2,7 @@ package com.natan.mediaportal
 
 import android.content.SharedPreferences
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,9 +30,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -51,6 +57,7 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 /** The chapters the service split a title into; one item means the book has none. */
 private fun Player.chaptersOf(titleId: String): List<AudioChapter> {
@@ -68,7 +75,7 @@ private fun Player.chaptersOf(titleId: String): List<AudioChapter> {
 @Composable
 internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, prefs: SharedPreferences, onStreamReady: () -> Unit, onClose: () -> Unit,
     coverModifier: Modifier = Modifier, fallbackCover: @Composable (Modifier) -> Unit) {
-    var position by remember(player) { mutableLongStateOf(player.bookPosition) }
+    val motion = remember(player) { PlaybackMotionState().apply { report(player) } }
     var duration by remember(player) { mutableLongStateOf(player.bookDuration) }
     var playing by remember(player) { mutableStateOf(player.isPlaying) }
     var speed by remember(player) { mutableFloatStateOf(player.playbackParameters.speed) }
@@ -84,17 +91,30 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) { speed = parameters.speed }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) { playbackError = if (title.streaming) "Couldn’t buffer audio. Check your connection and Telegram sign-in, then retry." else "This audio could not be played. The file may be damaged or use an unsupported codec." }
+            // Anything that starts, stops or moves playback is a fresh position report, besides the regular ones below.
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED,
+                        Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) motion.report(player)
+            }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
-    LaunchedEffect(player) { while (true) { position = player.bookPosition; duration = player.bookDuration; playing = player.isPlaying; delay(500) } }
-    val current = chapters.indexOfLast { it.startMs <= position }.coerceAtLeast(0)
+    // The player is asked where it is twice a second, like the iOS one; the bar glides between reports on its own.
+    LaunchedEffect(player) { while (true) { motion.report(player); duration = player.bookDuration; playing = player.isPlaying; delay(500) } }
+    LaunchedEffect(motion) {
+        snapshotFlow { motion.moving }.collectLatest { moving -> if (moving) while (true) withInfiniteAnimationFrameMillis { motion.frame() } }
+    }
+    // Derived, so the screen recomposes when the chapter changes rather than on every frame the bar moves.
+    val current by remember(motion, chapters) { derivedStateOf { chapterIndexAt(chapters, motion.shown) } }
+    val shownSecond by remember(motion) { derivedStateOf { motion.shown.toLong() / 1000 * 1000 } }
     val chapterStart = if (chapters.size > 1) chapters[current].startMs else 0L
     val chapterLength = if (chapters.size > 1) chapterLengthMs(chapters, current, duration) else duration
     val ready = duration > 0 && playbackError == null
-    fun seek(to: Long) {
-        player.seekBook(to); position = to
+    fun seek(to: Long, eased: Boolean = true) {
+        // The bar learns of the jump first, so the player's own report of it, which can arrive during seekBook, finds it pending.
+        motion.seek(to.coerceIn(0, duration), player, eased, chapters)
+        player.seekBook(to)
         prefs.edit().putLong("audio:${title.id}", to).putLong("audioModified:${title.id}", System.currentTimeMillis()).apply()
     }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -106,7 +126,7 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
                 .shadow(16.dp, shape).clip(shape), contentScale = ContentScale.Crop)
             else fallbackCover(coverModifier.aspectRatio(.67f, matchHeightConstraintsFirst = true))
         }
-        Text(title.name, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title.name, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("player-title"))
         if (title.author.isNotBlank()) Text(title.author, color = muted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (chapters.size > 1) TextButton(onClick = { chaptersOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.heightIn(min = 40.dp)) {
             Text(chapters[current].name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -117,10 +137,10 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
             if (title.streaming) TextButton(onClick = { playbackError = null; player.prepare(); player.play() }, contentPadding = PaddingValues(0.dp)) { Text("Retry streaming") }
         }
         Column(Modifier.fillMaxWidth().padding(top = 12.dp).testTag("audio-controls")) {
-            ChapterScrubber(chapterStart, chapterLength, position, ready, ::seek)
+            ChapterScrubber(chapterStart, chapterLength, { motion.shown }, ready, ::seek)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                 val accent = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                IconButton(onClick = { seek((player.bookPosition - 15000).coerceAtLeast(0)) }, enabled = ready, colors = accent, modifier = Modifier.size(60.dp)) {
+                IconButton(onClick = { seek((motion.skipBase(player) - 15000).coerceAtLeast(0)) }, enabled = ready, colors = accent, modifier = Modifier.size(60.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Outlined.Replay, "Back 15 seconds", Modifier.size(36.dp))
                         Text("15", fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
@@ -131,7 +151,7 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
                     colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = .18f), contentColor = MaterialTheme.colorScheme.primary)) {
                     Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
                 }
-                IconButton(onClick = { seek((player.bookPosition + 30000).coerceAtMost(duration)) }, enabled = ready, colors = accent, modifier = Modifier.size(60.dp)) {
+                IconButton(onClick = { seek((motion.skipBase(player) + 30000).coerceAtMost(duration)) }, enabled = ready, colors = accent, modifier = Modifier.size(60.dp)) {
                     Icon(Icons.Outlined.Forward30, "Forward 30 seconds", Modifier.size(36.dp))
                 }
             }
@@ -161,16 +181,17 @@ internal fun AudioPlayerScreen(title: Title, player: Player, artwork: Bitmap?, p
             TextButton(onClick = { speedOpen = false }, modifier = Modifier.align(Alignment.End)) { Text("Done") }
         }
     }
-    if (chaptersOpen) ChapterTimelineSheet(chapters, current, position, duration, onSelect = { seek(it.startMs) }, onDismiss = { chaptersOpen = false })
+    if (chaptersOpen) ChapterTimelineSheet(chapters, current, { shownSecond }, duration, onSelect = { seek(it.startMs) }, onDismiss = { chaptersOpen = false })
 }
 
 /**
  * Scrubs within the current chapter, as the lock screen does, so a long book still gives fine
  * control. The chapter a drag starts in is held until release, so playback crossing into the next
- * chapter cannot move the scale under the finger.
+ * chapter cannot move the scale under the finger. [position] is read while drawing, so the fill
+ * glides every frame while only the labels, once a second, recompose.
  */
 @Composable
-private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: Long, enabled: Boolean, onSeek: (Long) -> Unit) {
+private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: () -> Double, enabled: Boolean, onSeek: (Long, Boolean) -> Unit) {
     var held by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var scrub by remember { mutableLongStateOf(0L) }
     val latestStart by rememberUpdatedState(chapterStart)
@@ -178,14 +199,15 @@ private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: L
     val latestSeek by rememberUpdatedState(onSeek)
     val start = held?.first ?: chapterStart
     val length = (held?.second ?: chapterLength).coerceAtLeast(1)
-    val elapsed = if (held == null) (position - start).coerceIn(0, length) else scrub
+    val elapsed by remember(start, length) { derivedStateOf { if (held == null) elapsedLabelMs(position(), start, length) else scrub } }
     val thickness by animateDpAsState(if (held != null) 9.dp else 5.dp, label = "Scrubber thickness")
+    val fill = MaterialTheme.colorScheme.primary
     Column {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(32.dp).testTag("audio-timeline")
+        Box(Modifier.fillMaxWidth().height(32.dp).testTag("audio-timeline")
             .semantics {
                 contentDescription = "Chapter position"
                 progressBarRangeInfo = ProgressBarRangeInfo(elapsed.toFloat(), 0f..length.toFloat())
-                if (enabled) setProgress { value -> onSeek(start + value.toLong().coerceIn(0, length)); true }
+                if (enabled) setProgress { value -> onSeek(start + value.toLong().coerceIn(0, length), true); true }
             }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
@@ -193,20 +215,25 @@ private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: L
                 detectHorizontalDragGestures(
                     onDragStart = { offset -> held = latestStart to latestLength.coerceAtLeast(1); scrub = at(offset.x) },
                     onHorizontalDrag = { change, _ -> change.consume(); scrub = at(change.position.x) },
-                    onDragEnd = { held?.let { latestSeek(it.first + scrub) }; held = null },
+                    // The bar already sits where the finger let go, so the seek lands without easing.
+                    onDragEnd = { held?.let { latestSeek(it.first + scrub, false) }; held = null },
                     onDragCancel = { held = null })
             }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> latestSeek(latestStart + ((offset.x / size.width).coerceIn(0f, 1f) * latestLength).toLong()) }
+                detectTapGestures { offset -> latestSeek(latestStart + ((offset.x / size.width).coerceIn(0f, 1f) * latestLength).toLong(), true) }
             },
             contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(thickness).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = .12f)))
-            Box(Modifier.width(maxWidth * (elapsed.toFloat() / length)).height(thickness).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+            // Its own layer, redrawn alone each frame the fill moves.
+            Box(Modifier.fillMaxWidth().height(thickness).graphicsLayer().clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = .12f))
+                .drawBehind {
+                    val at = if (held == null) (position() - start).coerceIn(0.0, length.toDouble()) else scrub.toDouble()
+                    drawRoundRect(fill, size = Size(size.width * (at / length).toFloat(), size.height), cornerRadius = CornerRadius(size.height / 2))
+                })
         }
         Row(Modifier.fillMaxWidth()) {
-            Text(audioTime(elapsed), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f))
-            Text("−" + audioTime(length - elapsed), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            Text(audioTime(elapsed), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f).testTag("audio-elapsed"))
+            Text("−" + audioTime(length - elapsed), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.testTag("audio-remaining"))
         }
     }
 }
@@ -214,7 +241,7 @@ private fun ChapterScrubber(chapterStart: Long, chapterLength: Long, position: L
 /** Every chapter on one timeline: finished ones dimmed, the current one opened up to show how far in it is. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, position: Long, duration: Long, onSelect: (AudioChapter) -> Unit, onDismiss: () -> Unit) {
+private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, position: () -> Long, duration: Long, onSelect: (AudioChapter) -> Unit, onDismiss: () -> Unit) {
     val surface = BottomSheetDefaults.ContainerColor
     val accent = MaterialTheme.colorScheme.primary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -223,7 +250,7 @@ private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, pos
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Chapters", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                Text("${chapters.size} chapters · ${hoursAndMinutes(duration - position)} left", color = muted, fontSize = 13.sp)
+                Text("${chapters.size} chapters · ${hoursAndMinutes(duration - position())} left", color = muted, fontSize = 13.sp)
             }
             FilledTonalButton(onClick = onDismiss) { Text("Done") }
         }
@@ -247,7 +274,7 @@ private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, pos
                     }
                     Spacer(Modifier.width(16.dp))
                     if (index == current) {
-                        val elapsed = (position - chapter.startMs).coerceIn(0, length)
+                        val elapsed = (position() - chapter.startMs).coerceIn(0, length)
                         Column(Modifier.weight(1f).padding(vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(accent.copy(alpha = .14f)).padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(chapter.name, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -263,6 +290,29 @@ private fun ChapterTimelineSheet(chapters: List<AudioChapter>, current: Int, pos
             }
         }
     }
+}
+
+/**
+ * The progress bar's motion for one player: the rules live in [PlaybackProgress], and this keeps the latest of it and
+ * where the bar is drawn. [shown] changes every frame while the bar moves, so only drawing should read it directly.
+ */
+@Stable
+private class PlaybackMotionState(private val now: () -> Long = SystemClock::uptimeMillis) {
+    private var progress = PlaybackProgress()
+    /** Where the bar is drawn, in milliseconds into the book. */
+    var shown by mutableDoubleStateOf(0.0)
+        private set
+    /** Whether the bar moves by itself and needs a frame loop: while audio plays, or during a jump's ease. */
+    var moving by mutableStateOf(false)
+        private set
+    /** Audio moves at the playback speed only while it actually plays; while it buffers after a jump it stands still. */
+    private val Player.rate get() = if (isPlaying) playbackParameters.speed.toDouble() else 0.0
+
+    fun report(player: Player) = update(progress.report(player.bookPosition, player.rate, now()))
+    fun skipBase(player: Player): Long = progress.skipBase(player.bookPosition, now())
+    fun seek(target: Long, player: Player, eased: Boolean, chapters: List<AudioChapter>) = update(progress.seek(target, player.rate, now(), eased, chapters))
+    fun frame() { val time = now(); shown = progress.shownAt(time); moving = progress.movingAt(time) }
+    private fun update(next: PlaybackProgress) { progress = next; frame() }
 }
 
 /** What the playback service holds, for the mini player: which title, whether it plays, and the chapter it is in. */

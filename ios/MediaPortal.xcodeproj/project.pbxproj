@@ -10,6 +10,7 @@
 		000CCC7A36D498066857629C /* swift-toolkit-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = ECB230977E565F73D215077A /* swift-toolkit-LICENSE.txt */; };
 		018D75B39D8CCB9F62CA99A1 /* ZIPFoundation-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7DFF22C2BE44CF3C3AB4CC44 /* ZIPFoundation-LICENSE.txt */; };
 		039BFC487FEDB4A9DB00EBEC /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = F79CAED253E3CB7527FD4CA7 /* ReadiumNavigator */; };
+		0B07DA825497852F1C43E60E /* PlayerMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8A6E272B7942A14CE0F0599 /* PlayerMotion.swift */; };
 		0C5E1B81EA8206770FC6668D /* Zip-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = CB0451BFC510AA92C2115B2A /* Zip-LICENSE.txt */; };
 		14A8EB6A8A449CD6892E0B08 /* alice.epub in Resources */ = {isa = PBXBuildFile; fileRef = CD06FB4BBD8AC4FFAF1413D0 /* alice.epub */; };
 		186B77F45187B742E2963F92 /* TDLib.txt in Resources */ = {isa = PBXBuildFile; fileRef = 62EE249E7A949BD3159FA86F /* TDLib.txt */; };
@@ -23,6 +24,7 @@
 		37B60BF8D936F7B86C8D8140 /* CryptoSwift-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = AA8B434B66CD0C5371752AC2 /* CryptoSwift-LICENSE.txt */; };
 		38ACEDFEED141DC4452CE61F /* LibrarySort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509F4FD48B62B72C5FC1118B /* LibrarySort.swift */; };
 		39D61A9B21246A9148C454FA /* TelegramSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0C81775C4377531EFDD858 /* TelegramSettings.swift */; };
+		3ADEEB5334493145F7AF7356 /* PlaybackMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DAC7E51193938FC856C9FEE /* PlaybackMotionTests.swift */; };
 		3C2D4AA15A086AA70914E523 /* TelegramIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761DC45E4C90A7706EA80DB6 /* TelegramIdentity.swift */; };
 		4079D8D6C04AF41FA355DD84 /* SwiftSoup-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 91640C7451F72BC9904CF2B8 /* SwiftSoup-LICENSE.txt */; };
 		40C0C62F1577FE15A1CAC874 /* ThemeContrastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A9307CA56085FC1A2B13B36 /* ThemeContrastTests.swift */; };
@@ -106,6 +108,7 @@
 		0C0C81775C4377531EFDD858 /* TelegramSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelegramSettings.swift; sourceTree = "<group>"; };
 		11A1489D93027B0053952490 /* GCDWebServer-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "GCDWebServer-LICENSE.txt"; sourceTree = "<group>"; };
 		17CE1DB9E03D6B4DCA19C044 /* FolioNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolioNavigationTests.swift; sourceTree = "<group>"; };
+		1DAC7E51193938FC856C9FEE /* PlaybackMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackMotionTests.swift; sourceTree = "<group>"; };
 		1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryTests.swift; sourceTree = "<group>"; };
 		2439FDBF9E91D6D4C472D6B9 /* wordnet.db.gzip */ = {isa = PBXFileReference; path = wordnet.db.gzip; sourceTree = "<group>"; };
 		26F78F97E40AC23598BBA508 /* ReaderTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTools.swift; sourceTree = "<group>"; };
@@ -135,6 +138,7 @@
 		9D3ADCC35432199D67374969 /* comic.cbz */ = {isa = PBXFileReference; path = comic.cbz; sourceTree = "<group>"; };
 		9FAD497333E06E584FBE9B39 /* PositionSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PositionSyncTests.swift; sourceTree = "<group>"; };
 		A73C2F173CA6C7CC2ED5FC1F /* PortalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalUITests.swift; sourceTree = "<group>"; };
+		A8A6E272B7942A14CE0F0599 /* PlayerMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerMotion.swift; sourceTree = "<group>"; };
 		AA8B434B66CD0C5371752AC2 /* CryptoSwift-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CryptoSwift-LICENSE.txt"; sourceTree = "<group>"; };
 		AD923AF716638655F381F404 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		ADCEB94A5E74D14B23D808B7 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
@@ -207,6 +211,7 @@
 				1E4F96662C2D837CB0AFB9F1 /* LibraryTests.swift */,
 				4D73C185169CC3D8D67442EF /* ListeningProgressTests.swift */,
 				5D9B9701AAF565F5DE4FD089 /* PageFlipMathTests.swift */,
+				1DAC7E51193938FC856C9FEE /* PlaybackMotionTests.swift */,
 				9FAD497333E06E584FBE9B39 /* PositionSyncTests.swift */,
 				8759C04C26A75CC535B09679 /* SeriesMetadataTests.swift */,
 				DF60019D8C98C2BBE192B507 /* ServerAudiobookTests.swift */,
@@ -243,6 +248,7 @@
 				B273C586C172B7E0D5099F62 /* OfflineDictionary.swift */,
 				71A576AB4F63616E17FF905F /* PageFlip.swift */,
 				EAC7B6653C947D3BEDD87C48 /* PairingConfirmation.swift */,
+				A8A6E272B7942A14CE0F0599 /* PlayerMotion.swift */,
 				66EF2D4C03A21C1ADAEE7602 /* PositionSync.swift */,
 				DB2A8DDF05DC6352F67F14C1 /* Reader.swift */,
 				26F78F97E40AC23598BBA508 /* ReaderTools.swift */,
@@ -471,6 +477,7 @@
 				B21A48D3E75BA4FF27380185 /* LibraryTests.swift in Sources */,
 				5E531401C57E85331494029B /* ListeningProgressTests.swift in Sources */,
 				F797E46BCD11D415CFFFBF60 /* PageFlipMathTests.swift in Sources */,
+				3ADEEB5334493145F7AF7356 /* PlaybackMotionTests.swift in Sources */,
 				1DA27BDF9D9F5D15DDAC6C29 /* PositionSyncTests.swift in Sources */,
 				B7DB242DA1AB8C4809518AA7 /* SeriesMetadataTests.swift in Sources */,
 				4914C1B4CD8A48C756E33656 /* ServerAudiobookTests.swift in Sources */,
@@ -506,6 +513,7 @@
 				A4BDEFD178555A820715E6B9 /* OfflineDictionary.swift in Sources */,
 				847B7FFAAA83656C45D9B216 /* PageFlip.swift in Sources */,
 				2E7502CA5CB85B56CBF182A4 /* PairingConfirmation.swift in Sources */,
+				0B07DA825497852F1C43E60E /* PlayerMotion.swift in Sources */,
 				AA0861C622107CB3CAC3F1CB /* PositionSync.swift in Sources */,
 				D23C82109F0E07288C2B616D /* Reader.swift in Sources */,
 				BBE24CC51FD6BD3B410002ED /* ReaderTools.swift in Sources */,

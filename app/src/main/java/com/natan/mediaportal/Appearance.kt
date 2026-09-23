@@ -78,7 +78,12 @@ internal fun PortalTheme(styleWindow: Boolean = true, darkOverride: Boolean? = n
         prefs.edit().putString("mode", value.mode).putString("palette", value.palette).apply()
     }) {
         MaterialExpressiveTheme(colorScheme = scheme, motionScheme = MotionScheme.expressive(),
-            shapes = Shapes(small = RoundedCornerShape(16.dp), medium = RoundedCornerShape(24.dp), large = RoundedCornerShape(28.dp), extraLarge = RoundedCornerShape(32.dp)), content = content)
+            shapes = Shapes(small = RoundedCornerShape(16.dp), medium = RoundedCornerShape(24.dp), large = RoundedCornerShape(28.dp), extraLarge = RoundedCornerShape(32.dp))) {
+            // Text and icons with no colour of their own take LocalContentColor, which is black unless a Surface sets it.
+            // Screens drawn straight on the background, like the audiobook player, lost their title and close arrow in
+            // dark mode; the theme's own ink keeps anything unstyled readable in every palette and mode.
+            CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+        }
     }
 }
 

@@ -48,7 +48,7 @@ Manual two-way approximate reading-position sync is available under Server → K
 - Five reading papers: white, sepia, sakura (cherry-blossom pink), night and indigo. The reader's buttons and page numbers follow the paper, light on light pages and dark on dark ones, whatever the app's own appearance.
 - Aquamarine, blue, lilac, peach and sakura accents, each with a deeper shade for light mode so accent text stays readable.
 - Media3 audio playback with seeking and separate persisted timestamp.
-- A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet.
+- A full-screen player in the app's theme that grows out of a mini player above the tab bar and shrinks back into it when swiped down, with chapters on their own timeline sheet. One spring drives the whole morph, so it follows a dragging finger and a tap or drag can catch it mid-way and turn it around; nothing waits for an animation to finish. The progress bar glides at the screen's frame rate, and skipping eases it straight to the new place without flicking back.
 - Attach an audio file to an ebook title (or an ebook to an audio title).
 
 Embedded EPUB artwork is extracted when available, with typographic cover placeholders otherwise.

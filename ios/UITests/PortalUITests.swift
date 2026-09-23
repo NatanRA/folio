@@ -301,6 +301,34 @@ final class PortalUITests: XCTestCase {
             .press(forDuration: 0.05, thenDragTo: book.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
         expectation(for: NSPredicate(format: "value BEGINSWITH 'Cover'"), evaluatedWith: book); waitForExpectations(timeout: 5)
     }
+    /// The player card can be caught mid-flight: a tap on a card that is still shrinking turns it around, and dragging
+    /// it down closes it. The spring is slowed so the test can land inside the animation.
+    func testPlayerCardCanBeCaughtMidFlight() throws {
+        let app = XCUIApplication()
+        // Twenty times slower, a collapse takes several seconds, so the next tap lands while the card is still moving.
+        app.launchArguments = ["-playerMotionScale", "20"]
+        app.launch()
+        app.tabBars.buttons["Library"].tap()
+        let book = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'The Lighthouse Keeper'")).firstMatch
+        guard book.waitForExistence(timeout: 5) else { throw XCTSkip("Requires the simulator-only Lighthouse Keeper audiobook fixture") }
+        book.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Audiobook'")).firstMatch.tap()
+        let close = app.buttons["Close player"]
+        XCTAssertTrue(close.waitForExistence(timeout: 30))
+        close.tap()
+        // Low on the screen the shrinking card covers this point until the very end, when only the mini player is
+        // left further down. A tap here reopens the player only if it caught the card mid-flight.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).tap()
+        // Had the tap missed, the slowed collapse would have finished and taken the player away well within this.
+        sleep(20)
+        XCTAssertTrue(close.exists, "A tap on the shrinking card should have opened the player again")
+        let caught = XCTAttachment(screenshot: app.screenshot()); caught.name = "Caught mid-flight"; caught.lifetime = .keepAlways; add(caught)
+        // Dragging the open card most of the way down closes it into the mini player.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)), withVelocity: .slow, thenHoldForDuration: 0.1)
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: close); waitForExpectations(timeout: 40)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open player'")).firstMatch.waitForExistence(timeout: 5))
+    }
     /// Types a page into the page picker's "Go to page" prompt, which opens that page.
     private func goToPage(_ page: String, in app: XCUIApplication) {
         let header = app.buttons["pageNumberEntry"]; XCTAssertTrue(header.waitForExistence(timeout: 5)); header.tap()
