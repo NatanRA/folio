@@ -5,7 +5,7 @@ import os
 /// Debug builds started with `-frameMonitor YES` count the frames that arrive late, so dropped frames can be measured
 /// on a simulator or a phone rather than judged by eye. It sees the main thread missing frames, not work the GPU finds
 /// slow, and while it runs it asks for the display's highest rate. Each late frame and a running total go to the unified log:
-/// `log show --predicate 'subsystem == "com.natan.mediaportal" AND category == "frames"'`. With `-playerMorphAudit YES`
+/// `log show --predicate 'subsystem == "app.folio.library" AND category == "frames"'`. With `-playerMorphAudit YES`
 /// as well, the app exercises the player on its own; `xcrun simctl launch --console-pty` returns when it's done.
 @MainActor final class FrameMonitor: NSObject {
     static let shared = FrameMonitor()
@@ -13,7 +13,7 @@ import os
     private var last: CFTimeInterval = 0
     private var frames = 0
     private var late = 0
-    private let log = Logger(subsystem: "com.natan.mediaportal", category: "frames")
+    private let log = Logger(subsystem: "app.folio.library", category: "frames")
 
     func start() {
         guard UserDefaults.standard.bool(forKey: "frameMonitor"), link == nil else { return }
@@ -46,7 +46,7 @@ import os
 enum PlayerMorphAudit {
     @MainActor static func run(audio: AudioPlayer, library: Library) async {
         guard UserDefaults.standard.bool(forKey: "playerMorphAudit"), let book = library.books.first(where: { $0.audio != nil }) else { return }
-        let log = Logger(subsystem: "com.natan.mediaportal", category: "frames")
+        let log = Logger(subsystem: "app.folio.library", category: "frames")
         await audio.load(book, library: library); audio.play()
         try? await Task.sleep(for: .seconds(2))
         log.notice("audit start")

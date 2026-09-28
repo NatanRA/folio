@@ -11,7 +11,6 @@ Personal ebook/audiobook library: Android (Kotlin/Compose, `app/`) and native iO
 
 ## Rules
 
-- App ID `com.natan.mediaportal` and iOS identifiers must not change: upgrades keep users' libraries and progress.
 - Never commit server credentials, personal books, signing keys or `telegram-private.json`. Build release packages without a Telegram identity installed; the publish helper rejects packages containing it.
 - Release APKs are signed with `~/.android/folio-release.jks` (outside the repo). A lost or different key forces every user to reinstall; the helper checks the certificate SHA-256.
 - Keep Android (`app/build.gradle.kts`) and iOS (`ios/project.yml`) versions in step; build numbers only increase. Add `docs/releases/v<version>.md` and a README release-history entry with each release.

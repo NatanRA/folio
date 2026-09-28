@@ -2,9 +2,9 @@ import java.util.Properties
 
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
 android {
-    namespace = "com.natan.mediaportal"
+    namespace = "app.folio.library"
     compileSdk = 36
-    defaultConfig { applicationId = "com.natan.mediaportal"; minSdk = 26; targetSdk = 36; versionCode = 62; versionName = "0.9.8"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "app.folio.library"; minSdk = 26; targetSdk = 36; versionCode = 62; versionName = "0.9.8"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true }
     // Published APKs are signed with Folio's own release key rather than a machine's debug key, so an
     // update installs over the last one whichever machine built it. The key and its passwords live

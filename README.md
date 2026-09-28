@@ -2,7 +2,7 @@
 
 Personal Android and native iOS ebook and audiobook library. One title can hold both formats, with independent reading and listening progress.
 
-Formerly Media Portal. Folio keeps the same application identifiers so upgrades retain your library, settings and saved progress.
+Formerly Media Portal. Builds up to 0.9.8 used an older app identifier, so the current app installs next to them rather than over them: sign in again, then uninstall the old copy.
 
 ## Download
 
@@ -64,7 +64,7 @@ Requires JDK 17 or newer and Android SDK 36.
 ANDROID_HOME=/path/to/android/sdk ./gradlew :app:assembleDebug
 ```
 
-Minimum Android version: 8.0. App ID: `com.natan.mediaportal`.
+Minimum Android version: 8.0. App ID: `app.folio.library`.
 
 Generated development APKs are kept in the ignored `dist/` directory rather than source control.
 
