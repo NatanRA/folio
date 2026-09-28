@@ -2,7 +2,7 @@
 
 Native SwiftUI/UIKit iPhone and iPad app, using Readium Swift 3.8 for EPUBs and AVPlayer for audio.
 
-[Download the latest Folio IPA](https://github.com/FormulaLatest/natan-media-portal/releases/latest/download/Folio-iOS.ipa). The link follows each paired release; see the [latest release notes](https://github.com/FormulaLatest/natan-media-portal/releases/latest) for the version.
+[Download the latest Folio IPA](https://github.com/NatanRA/folio/releases/latest/download/Folio-iOS.ipa). The link follows each paired release; see the [latest release notes](https://github.com/NatanRA/folio/releases/latest) for the version.
 
 ## Install with SideStore
 

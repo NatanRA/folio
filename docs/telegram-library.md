@@ -7,7 +7,7 @@ real cloud download remain unverified; do not describe the library as connected.
 ## Storage and scope
 
 Telegram cloud chats hold the original files. Android and iOS connect directly
-through TDLib; the Oracle VM and existing book-inbox bot are not in this path.
+through TDLib; no server or bot of your own sits in this path.
 Start with Saved Messages, with an explicit picker for another private chat or
 channel. Index supported document/audio attachments only from the selected chat.
 Do not send messages, mark chats read, or import unrelated conversations.
@@ -119,8 +119,6 @@ new-account-registration authorization states require the official Telegram app.
    then verify artwork, chapters, offline playback, and retained positions.
 4. Verify no account/session secrets enter logs, backups, Git, or release files.
 5. Verify UI loading/error/empty states on Android and iOS.
-6. Only after Telegram copies and device import are verified, review the specific
-   VM audiobook staging files for cleanup; preserve the Mac originals.
 
 References: https://core.telegram.org/tdlib and
 https://core.telegram.org/api/obtaining_api_id

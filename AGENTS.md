@@ -1,4 +1,4 @@
-# Folio (natan-media-portal)
+# Folio
 
 Personal ebook/audiobook library: Android (Kotlin/Compose, `app/`) and native iOS (SwiftUI, `ios/`). Build, test and release steps are in `README.md`; Telegram/TDLib in `docs/telegram-library.md`; iOS in `ios/README.md`.
 
@@ -17,4 +17,4 @@ Personal ebook/audiobook library: Android (Kotlin/Compose, `app/`) and native iO
 - Keep Android (`app/build.gradle.kts`) and iOS (`ios/project.yml`) versions in step; build numbers only increase. Add `docs/releases/v<version>.md` and a README release-history entry with each release.
 - README download links must stay `releases/latest/download/...`, never version-specific.
 - Built APKs/IPAs go in ignored `dist/`.
-- The BookLore VM and Telegram service are separate systems; the app does not modify them.
+- BookLore and Telegram are separate systems; the app is a client and does not modify them.

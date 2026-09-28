@@ -2,18 +2,18 @@
 
 Personal Android and native iOS ebook and audiobook library. One title can hold both formats, with independent reading and listening progress.
 
-Formerly Natan's Media Portal. Folio keeps the same application identifiers so upgrades retain your library, settings and saved progress.
+Formerly Media Portal. Folio keeps the same application identifiers so upgrades retain your library, settings and saved progress.
 
 ## Download
 
 | Android | iPhone / iPad |
 | --- | --- |
-| **[⬇ Download APK](https://github.com/FormulaLatest/natan-media-portal/releases/latest/download/Folio-Android.apk)** | **[⬇ Download IPA](https://github.com/FormulaLatest/natan-media-portal/releases/latest/download/Folio-iOS.ipa)** |
+| **[⬇ Download APK](https://github.com/NatanRA/folio/releases/latest/download/Folio-Android.apk)** | **[⬇ Download IPA](https://github.com/NatanRA/folio/releases/latest/download/Folio-iOS.ipa)** |
 | Android 8+ · install over the existing app | iOS 17+ · unsigned, sign using SideStore |
 
-Sign in to GitHub with access to this private repository. If a direct download does not open, use the **[latest release page](https://github.com/FormulaLatest/natan-media-portal/releases/latest)** and select the file under Assets.
+If a direct download does not open, use the **[latest release page](https://github.com/NatanRA/folio/releases/latest)** and select the file under Assets.
 
-These links always download the newest release. Versions and changes are listed on the [latest release page](https://github.com/FormulaLatest/natan-media-portal/releases/latest). See the [native iOS features and build instructions](ios/README.md).
+These links always download the newest release. Versions and changes are listed on the [latest release page](https://github.com/NatanRA/folio/releases/latest). See the [native iOS features and build instructions](ios/README.md).
 
 ## Connecting a library
 
@@ -68,7 +68,7 @@ Minimum Android version: 8.0. App ID: `com.natan.mediaportal`.
 
 Generated development APKs are kept in the ignored `dist/` directory rather than source control.
 
-No server credentials, personal books, or signing keys belong in this repository. The existing BookLore VM and Telegram service are separate systems and are not modified by the app.
+No server credentials, personal books, or signing keys belong in this repository. Folio is a client of your BookLore server and of Telegram; it does not modify either.
 
 ## Tests
 
@@ -111,17 +111,20 @@ The helper uploads both packages as `Folio-Android.apk` and `Folio-iOS.ipa`, plu
 
 ## Remaining work
 
-1. Enable the private annotation service on the books VM once hosting is approved.
-2. Extend BookLore OPDS formats and resume interrupted downloads.
-3. Broader Bluetooth and physical-device background playback testing.
-4. Automatic cross-device synchronization, keeping ebook and audio progress independent.
+1. Extend BookLore OPDS formats and resume interrupted downloads.
+2. Broader Bluetooth and physical-device background playback testing.
+3. Automatic cross-device synchronization, keeping ebook and audio progress independent.
 
-GitHub destination: private `FormulaLatest/natan-media-portal`.
+## License
+
+Folio is released under the [MIT License](LICENSE). Bundled third-party components keep their own
+licences, included in `app/src/main/assets/licenses`, `app/src/main/assets/dictionary` and
+`ios/Resources/Licenses`.
 
 ## Release history
 
 Every release adds an entry here. Full notes live in [docs/releases](docs/releases) and on the
-[releases page](https://github.com/FormulaLatest/natan-media-portal/releases).
+[releases page](https://github.com/NatanRA/folio/releases).
 
 Android and iOS were versioned separately until 0.9.0, so earlier entries name two numbers — for
 example Android 0.8.8 alongside iOS 0.3.8. From 0.9.0 both platforms share one version.
